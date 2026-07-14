@@ -274,3 +274,4 @@ ai_yanchuaner/
 - 微信小程序：`C:\Dev\yanchuaner\mp_yanchuaner`
 - 燕中生态愿景：[docs/yanzhong-ecosystem-vision.md](docs/yanzhong-ecosystem-vision.md)
 - 网关 PoC 验收：[docs/litellm-openwebui-poc.md](docs/litellm-openwebui-poc.md)
+- 生产部署与低维护运行：[docs/deployment.md](docs/deployment.md)

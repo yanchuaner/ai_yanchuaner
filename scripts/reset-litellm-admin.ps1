@@ -47,6 +47,9 @@ try {
     if ($plainPassword -cne $confirmation) {
         throw "两次输入的密码不一致。"
     }
+    if ($plainPassword -notmatch '^[A-Za-z0-9.!@%_~+\-]{12,128}$') {
+        throw "密码必须为 12 至 128 位，只能包含字母、数字和 . ! @ % _ ~ + -。"
+    }
 
     Set-DotEnvValue "LITELLM_UI_USERNAME" $uiUsername
     Set-DotEnvValue "LITELLM_UI_PASSWORD" $plainPassword

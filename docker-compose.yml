@@ -1,5 +1,11 @@
 name: ai-yanchuaner
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:16-alpine
@@ -10,6 +16,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
       interval: 5s
@@ -29,6 +36,7 @@ services:
       STORE_MODEL_IN_DB: "True"
     volumes:
       - ./gateway/config.yaml:/app/config.yaml:ro
+    logging: *default-logging
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
@@ -67,12 +75,14 @@ services:
       WEBUI_AUTH: "True"
       WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY}
       WEBUI_NAME: "燕中 AI"
+      WEBUI_URL: ${OPENWEBUI_URL:-http://localhost:3000}
       ENABLE_SIGNUP: ${OPENWEBUI_ENABLE_SIGNUP:-False}
       DEFAULT_USER_ROLE: pending
-      CORS_ALLOW_ORIGIN: http://localhost:3000
+      CORS_ALLOW_ORIGIN: ${OPENWEBUI_CORS_ALLOW_ORIGIN:-http://localhost:3000}
       USER_AGENT: ai-yanchuaner-open-webui/0.1
     volumes:
       - open_webui_data:/app/backend/data
+    logging: *default-logging
     ports:
       - "127.0.0.1:3000:8080"
     depends_on:
