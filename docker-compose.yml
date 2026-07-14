@@ -24,6 +24,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      UI_USERNAME: ${LITELLM_UI_USERNAME:-admin}
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD:-${LITELLM_MASTER_KEY}}
       STORE_MODEL_IN_DB: "True"
     volumes:
       - ./gateway/config.yaml:/app/config.yaml:ro
@@ -50,6 +52,14 @@ services:
       ENABLE_OPENAI_API: "True"
       ENABLE_OPENAI_API_PASSTHROUGH: "False"
       ENABLE_OLLAMA_API: "False"
+      ENABLE_IMAGE_GENERATION: "True"
+      ENABLE_IMAGE_PROMPT_GENERATION: "False"
+      IMAGE_GENERATION_ENGINE: openai
+      IMAGE_GENERATION_MODEL: gpt-image-2
+      IMAGE_SIZE: 1024x1024
+      IMAGES_OPENAI_API_BASE_URL: http://litellm:4000/v1
+      IMAGES_OPENAI_API_KEY: ${OPENWEBUI_IMAGE_LITELLM_KEY}
+      IMAGES_OPENAI_PARAMS: '{"quality":"low"}'
       RAG_EMBEDDING_ENGINE: openai
       RAG_EMBEDDING_MODEL: text-embedding-3-small
       RAG_OPENAI_API_BASE_URL: http://litellm:4000/v1

@@ -8,7 +8,7 @@
 
 截至 2026 年 7 月 14 日，单渠道模型网关 PoC 已通过验收：LiteLLM、PostgreSQL 与 Open WebUI 均可稳定启动，普通请求、SSE 流式输出、虚拟 Key 鉴权、模型权限和 RPM 限流均已验证。Open WebUI 已使用独立虚拟 Key，开放注册已关闭。
 
-阶段 1 尚未全部完成：当前只有一个上游供应商，第二渠道、跨供应商故障切换、预算耗尽和 TPM 超限仍需验证。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
+阶段 1 尚未全部完成：文本和图片能力目前各自只有单一上游，同能力第二渠道、跨供应商故障切换、预算耗尽和 TPM 超限仍需验证。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
 
 ## 项目目标
 
@@ -129,6 +129,19 @@ docker compose ps
 .\scripts\stream-test.ps1
 ```
 
+接入 `gpt-image-2` 时，使用安全提示输入官方或 OpenAI 兼容上游的 API Key。脚本会先验证上游鉴权，再把上游地址和凭据加密保存到 LiteLLM，并生成只允许图片模型、带预算和 RPM 限制的 Open WebUI 专用虚拟 Key。官方 OpenAI 可直接运行脚本；兼容中转站需要显式指定其 `/v1` 地址：
+
+```powershell
+.\scripts\configure-gpt-image.ps1
+# 或使用兼容上游：
+.\scripts\configure-gpt-image.ps1 -ApiBaseUrl "https://api.example.com/v1"
+docker compose up -d --force-recreate open-webui
+.\scripts\sync-openwebui-image-config.ps1
+.\scripts\image-smoke-test.ps1
+```
+
+真实上游 API Key 不写入 `.env`，也不会输出到终端；本地 `.env` 只保存可随时撤销的 LiteLLM 图片虚拟 Key。同步脚本用于覆盖 Open WebUI 数据库中的旧图片设置，并关闭不必要的提示词自动改写。图片冒烟测试的结果写入系统临时目录，不进入仓库。
+
 流式测试会在终端实时追加模型文本，并报告文本片段数、首段延迟和总耗时。响应类型必须为 `text/event-stream`，且正常收到结束标记 `[DONE]` 才会通过。
 
 查看网关日志：
@@ -147,6 +160,18 @@ docker compose logs -f litellm
 Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_LITELLM_KEY` 使用独立的受限虚拟 Key 连接 LiteLLM。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本使用，当前实例已关闭开放注册。
 
 全新实例默认禁止注册。首次初始化时，在本地 `.env` 中临时设置 `OPENWEBUI_ENABLE_SIGNUP=True` 并启动服务，创建首个管理员后，立即在 `管理员面板 → 设置 → 身份验证` 中关闭新用户注册，再将该变量改回 `False`。
+
+重置唯一 Open WebUI 管理员时，运行以下脚本并按提示隐藏输入两次新密码。脚本会保留原账号数据，将登录邮箱统一为 `yanchuaner@yanchuaner.cn`：
+
+```powershell
+.\scripts\reset-openwebui-admin.ps1
+```
+
+LiteLLM 管理界面使用独立账号，重置时运行以下脚本。脚本将用户名设为 `yanchuaner`，密码隐藏写入本地 `.env`，不会修改 LiteLLM 主密钥：
+
+```powershell
+.\scripts\reset-litellm-admin.ps1
+```
 
 Open WebUI 会将外部连接配置保存到自己的数据库，保存后的后台配置优先于环境变量。轮换 `OPENWEBUI_LITELLM_KEY` 后，还需要在 `管理员面板 → 设置 → 外部连接` 中同步更新 API Key。
 
