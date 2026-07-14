@@ -103,7 +103,7 @@ LiteLLM 统一模型网关
 启动环境：
 
 ```powershell
-cd C:\Dev\ai_yanchuaner
+cd C:\Dev\yanchuaner\ai_yanchuaner
 docker compose pull
 docker compose up -d
 docker compose ps
@@ -245,7 +245,7 @@ ai_yanchuaner/
 
 ## 相关项目
 
-- 燕中网站：`C:\Dev\web_projects\yanchuaner`
-- 微信小程序：`C:\Dev\web_projects\mp_yanchuaner`
+- 燕中网站：`C:\Dev\yanchuaner\web_yanchuaner`
+- 微信小程序：`C:\Dev\yanchuaner\mp_yanchuaner`
 - 燕中生态愿景：[docs/yanzhong-ecosystem-vision.md](docs/yanzhong-ecosystem-vision.md)
 - 网关 PoC 验收：[docs/litellm-openwebui-poc.md](docs/litellm-openwebui-poc.md)
