@@ -44,10 +44,16 @@ if ($response -ne "I'm alive!") {
     throw "LiteLLM 未在 90 秒内恢复健康。请执行 docker compose logs litellm。"
 }
 
+$openWebUiAddress = [string](& $docker compose port open-webui 8080 | Select-Object -First 1)
+$openWebUiAddress = $openWebUiAddress.Trim()
+if ([string]::IsNullOrWhiteSpace($openWebUiAddress)) {
+    throw "无法读取 Open WebUI 的宿主机端口。"
+}
+
 $openWebUiHealthy = $false
 for ($attempt = 1; $attempt -le 40; $attempt++) {
     try {
-        $openWebUiResponse = Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:3000/health" -TimeoutSec 5
+        $openWebUiResponse = Invoke-WebRequest -UseBasicParsing -Uri "http://$openWebUiAddress/health" -TimeoutSec 5
         if ($openWebUiResponse.StatusCode -eq 200) {
             $openWebUiHealthy = $true
             break
@@ -68,4 +74,4 @@ Write-Output "PostgreSQL 服务：运行中"
 Write-Output "LiteLLM 服务：运行中且健康"
 Write-Output "Open WebUI 服务：运行中且健康"
 Write-Output "LiteLLM 管理界面：http://localhost:4000/ui"
-Write-Output "燕中 AI 测试界面：http://localhost:3000"
+Write-Output "燕中 AI 测试界面：http://$openWebUiAddress"

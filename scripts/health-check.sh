@@ -7,8 +7,14 @@ cd "$project_root"
 docker compose config --quiet
 curl --fail --silent --show-error --max-time 10 \
   http://127.0.0.1:4000/health/liveliness >/dev/null
+
+openwebui_address="$(docker compose port open-webui 8080 | head -n 1)"
+if [[ -z "$openwebui_address" ]]; then
+  echo "无法读取 Open WebUI 的宿主机端口" >&2
+  exit 1
+fi
 curl --fail --silent --show-error --max-time 10 \
-  http://127.0.0.1:3000/health >/dev/null
+  "http://$openwebui_address/health" >/dev/null
 
 running_services="$(docker compose ps --status running --services)"
 for service in db litellm open-webui; do

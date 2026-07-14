@@ -137,6 +137,8 @@ try {
             model = "openai/gpt-image-2"
             api_base = $upstreamBaseUrl
             api_key = $upstreamApiKey
+            # 当前中转站按请求计费，每次只生成一张图。
+            input_cost_per_image = 0.1
         }
         model_info = @{
             mode = "image_generation"
@@ -166,7 +168,7 @@ try {
         $keyBody = @{
             key_alias = "openwebui-image-generation"
             models = @("gpt-image-2")
-            max_budget = 5
+            max_budget = 3
             budget_duration = "30d"
             duration = "90d"
             rpm_limit = 2

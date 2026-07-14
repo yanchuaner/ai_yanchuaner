@@ -16,6 +16,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    mem_limit: 256m
     logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
@@ -36,6 +37,7 @@ services:
       STORE_MODEL_IN_DB: "True"
     volumes:
       - ./gateway/config.yaml:/app/config.yaml:ro
+    mem_limit: 1536m
     logging: *default-logging
     ports:
       - "127.0.0.1:4000:4000"
@@ -82,9 +84,10 @@ services:
       USER_AGENT: ai-yanchuaner-open-webui/0.1
     volumes:
       - open_webui_data:/app/backend/data
+    mem_limit: 1g
     logging: *default-logging
     ports:
-      - "127.0.0.1:3000:8080"
+      - "127.0.0.1:${OPENWEBUI_HOST_PORT:-3000}:8080"
     depends_on:
       litellm:
         condition: service_healthy

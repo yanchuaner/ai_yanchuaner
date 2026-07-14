@@ -10,7 +10,12 @@ if [[ ! -f .env ]]; then
 fi
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-backup_root="${BACKUP_DIR:-$project_root/backups}"
+backup_root="$(realpath -m "${BACKUP_DIR:-$project_root/backups}")"
+retention_days="${BACKUP_RETENTION_DAYS:-35}"
+if [[ "$backup_root" == "/" || ! "$retention_days" =~ ^[0-9]+$ ]]; then
+  echo "备份目录或保留天数配置无效" >&2
+  exit 1
+fi
 backup_dir="$backup_root/$timestamp"
 mkdir -p "$backup_dir"
 umask 077
@@ -43,6 +48,12 @@ docker compose config --images > "$backup_dir/images.txt"
   cd "$backup_dir"
   sha256sum litellm.sql open-webui-data.tar.gz runtime.env images.txt > SHA256SUMS
 )
+
+# 只清理本脚本生成的时间戳目录，避免误删备份根目录中的其他内容。
+find "$backup_root" -mindepth 1 -maxdepth 1 -type d \
+  -regextype posix-extended \
+  -regex '.*/[0-9]{8}T[0-9]{6}Z' \
+  -mtime "+$retention_days" -exec rm -rf -- {} +
 
 echo "备份完成：$backup_dir"
 echo "该目录包含真实密钥，必须保存在受限位置。"
