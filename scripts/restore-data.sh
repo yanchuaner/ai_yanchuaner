@@ -47,7 +47,7 @@ docker compose exec -T db psql \
   --single-transaction < "$backup_dir/litellm.sql"
 
 echo "正在恢复 Open WebUI 数据卷..."
-docker compose run --rm --no-deps --entrypoint sh open-webui \
+docker compose run --rm --no-deps -T --entrypoint sh open-webui \
   -c 'find /app/backend/data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -C /app/backend/data -xzf -' \
   < "$backup_dir/open-webui-data.tar.gz"
 
