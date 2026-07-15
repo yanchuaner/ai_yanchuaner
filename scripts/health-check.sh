@@ -6,6 +6,7 @@ cd "$project_root"
 
 docker compose config --quiet
 curl --fail --silent --show-error --max-time 10 \
+  --retry 12 --retry-delay 5 --retry-connrefused --retry-all-errors \
   http://127.0.0.1:4000/health/liveliness >/dev/null
 
 openwebui_address="$(docker compose port open-webui 8080 | head -n 1)"
@@ -14,6 +15,7 @@ if [[ -z "$openwebui_address" ]]; then
   exit 1
 fi
 curl --fail --silent --show-error --max-time 10 \
+  --retry 12 --retry-delay 5 --retry-connrefused --retry-all-errors \
   "http://$openwebui_address/health" >/dev/null
 
 running_services="$(docker compose ps --status running --services)"

@@ -37,7 +37,7 @@ docker compose exec -T db pg_dump \
 
 echo "正在短暂停止 Open WebUI 以生成一致性归档..."
 docker compose stop open-webui >/dev/null
-docker compose run --rm --no-deps --entrypoint sh open-webui \
+docker compose run --rm --no-deps -T --entrypoint sh open-webui \
   -c 'tar -C /app/backend/data -czf - .' > "$backup_dir/open-webui-data.tar.gz"
 docker compose start open-webui >/dev/null
 trap - EXIT
