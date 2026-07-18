@@ -6,9 +6,9 @@
 
 ## 当前状态
 
-截至 2026 年 7 月 17 日，主站、燕中 API、LiteLLM 与 Open WebUI 已打通：认证成员通过主站 OIDC 登录 Open WebUI，Open WebUI 使用燕中 API 的受限服务 Key，再由燕中 API 经 LiteLLM 调用获授权模型。开放注册与本地密码体系保持关闭，模型请求不再绕过统一额度与审计控制面。
+截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 已打通：认证成员通过主站 OIDC 登录 Open WebUI，Open WebUI 使用燕中 API 的受限服务 Key，再由燕中 API 经 LiteLLM 调用获授权模型。开放注册与本地密码体系保持关闭，模型请求不再绕过统一额度与审计控制面。
 
-普通请求、SSE 流式输出、虚拟 Key 鉴权、模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已经验证。文本和图片能力目前仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
+普通请求、SSE 流式输出、LiteLLM 服务 Key 的模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已有 PoC 证据。燕中 API 用户虚拟 Key 的预算、模型权限与额度流水由控制面另行验收；Open WebUI 当前共享服务 Key 尚不能单独证明逐用户请求归因。文本和图片能力仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
 
 ## 暑期预览目标
 
@@ -83,7 +83,7 @@ LiteLLM：上游路由 / 重试 / 成本核对
 
 ## 技术方向
 
-当前采用 LiteLLM 作为模型网关，本地验证版本为 `1.92.0`。Docker Compose 使用镜像摘要固定已验证构建，避免 `latest` 标签变化造成环境漂移。上层产品不依赖单一模型供应商。
+当前采用 LiteLLM 作为模型网关。固定镜像对应 `1.92.0` stable cut 的源码 revision `b3086ccd74553565c9a39716e72303ae985555f9`；Docker Compose 使用镜像摘要固定已验证构建，避免可变标签造成环境漂移。上层产品不依赖单一模型供应商。
 
 建议的应用组成：
 
@@ -139,7 +139,7 @@ docker compose ps
 .\scripts\stream-test.ps1
 ```
 
-接入 `gpt-image-2` 时，使用安全提示输入官方或 OpenAI 兼容上游的 API Key。脚本会先验证上游鉴权，再把上游地址和凭据加密保存到 LiteLLM，并生成只允许图片模型、带预算和 RPM 限制的 Open WebUI 专用虚拟 Key。官方 OpenAI 可直接运行脚本；兼容中转站需要显式指定其 `/v1` 地址：
+接入 `gpt-image-2` 时，使用安全提示输入官方或 OpenAI 兼容上游的 API Key。脚本会先验证上游鉴权，再把上游地址和凭据加密保存到 LiteLLM，并生成只允许图片模型、带预算和 RPM 限制的历史直连 PoC Key。集成部署还必须在燕中 API 中配置对应内部渠道，并继续使用 `OPENWEBUI_API_KEY`；不得把该 PoC Key 直接交给 Open WebUI 绕过控制面。官方 OpenAI 可直接运行脚本；兼容中转站需要显式指定其 `/v1` 地址：
 
 ```powershell
 .\scripts\configure-gpt-image.ps1
@@ -167,7 +167,7 @@ docker compose logs -f litellm
 - 存活检查：`http://localhost:4000/health/liveliness`
 - OpenAI 兼容 API：`http://localhost:4000/v1`
 
-Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_LITELLM_KEY` 使用独立的受限虚拟 Key 连接 LiteLLM。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本使用，当前实例已关闭开放注册。
+Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_API_KEY` 使用燕中 API 签发的受限服务 Key。该 Key 用于工作台到控制面的服务鉴权，当前不能替代逐用户用量归因；逐用户归因完成前不得据此扣减个人权益。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本直连 LiteLLM，当前实例已关闭开放注册。
 
 全新实例默认禁止注册。首次初始化时，在本地 `.env` 中临时设置 `OPENWEBUI_ENABLE_SIGNUP=True` 并启动服务，创建首个管理员后，立即在 `管理员面板 → 设置 → 身份验证` 中关闭新用户注册，再将该变量改回 `False`。
 
@@ -183,7 +183,7 @@ LiteLLM 管理界面使用独立账号，重置时运行以下脚本。脚本将
 .\scripts\reset-litellm-admin.ps1
 ```
 
-Open WebUI 会将外部连接配置保存到自己的数据库，保存后的后台配置优先于环境变量。轮换 `OPENWEBUI_LITELLM_KEY` 后，还需要在 `管理员面板 → 设置 → 外部连接` 中同步更新 API Key。
+Open WebUI 会将外部连接配置保存到自己的数据库，保存后的后台配置优先于环境变量。轮换 `OPENWEBUI_API_KEY` 后，还需要在 `管理员面板 → 设置 → 外部连接` 中同步更新 API Key。
 
 当前原型将知识库嵌入切换为远程 OpenAI 兼容模式，以避免首次启动下载体积较大的本地嵌入模型。聊天功能不受影响；文件检索和知识库功能需要在 LiteLLM 接入嵌入模型后再启用。
 
@@ -207,6 +207,12 @@ docker compose down
 - 管理操作必须可追溯，高风险操作需要再次确认。
 - 生产与开发环境完全隔离，生产密钥只通过密钥管理或环境注入提供。
 - 仅使用来源明确、条款允许的模型服务，不建设账号池和规避上游限制的能力。
+
+## 版权与开源治理
+
+本仓库的自主内容尚未在运营主体、贡献协议和对外策略确定前授予公众许可；源代码公开可见不等于已经开源。第三方镜像及许可义务见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，依赖升级顺序见 [依赖与部署基线](docs/dependency-baseline.md)，文件级来源与替换路线见 [版权与来源矩阵](docs/copyright-matrix.md)，安全披露见 [SECURITY.md](SECURITY.md)。
+
+Open WebUI 继续作为明确标识的第三方客户端底座。当前 `WEBUI_NAME` 的品牌配置只可在其许可证允许的条件内运行：未取得书面或企业许可时，滚动 30 日内直接用户不得超过 50 人，并须保留法律声明页的 Open WebUI 许可与版权信息。
 
 ## 推进阶段
 

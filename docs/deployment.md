@@ -7,16 +7,18 @@
 ```text
 互联网
   ├─ https://yanchuaner.cn    → Nginx → 127.0.0.1:3000 → Next.js
+  ├─ https://api.example.com  → Nginx → 127.0.0.1:3101 → 燕中 API
   └─ https://ai.example.com   → Nginx → 127.0.0.1:3001 → Open WebUI
-                                                   ↓ Docker 内网
-                                        LiteLLM:4000 → 模型上游
-                                                   ↓
-                                            PostgreSQL:5432
+                                                        ↓ Docker 内网
+                                              燕中 API → LiteLLM:4000
+                                                        ↓
+                                                 模型上游 / PostgreSQL
 ```
 
 | 服务 | 宿主机监听 | 是否公开 |
 | --- | --- | --- |
 | 燕中网站 | `127.0.0.1:3000` | 仅通过 Nginx |
+| 燕中 API | `127.0.0.1:3101` | 仅通过 Nginx |
 | Open WebUI | `127.0.0.1:3001` | 仅通过 Nginx |
 | LiteLLM | `127.0.0.1:4000` | 否，使用 SSH 隧道管理 |
 | PostgreSQL | 无宿主机映射 | 否 |
@@ -76,11 +78,13 @@ docker compose up -d
 ```
 
 6. 创建或恢复 LiteLLM 模型、凭据和虚拟 Key，再同步暑期成本策略。
-7. 初始化唯一 Open WebUI 管理员后立即关闭注册。
+7. 通过主站 OIDC 登录并确认普通用户无法使用本地注册或本地密码；应急管理员账号只限运维保管。
 8. 将 `deploy/nginx/ai.yanchuaner.cn.conf` 中的示例域名替换为真实 AI 域名，签发 HTTPS 证书。
 9. 网站生产环境设置 `AI_WORKSPACE_URL=https://ai.example.com`。
 
-LiteLLM 和 Open WebUI 的数据库配置具有持久化优先级。轮换虚拟 Key 后，必须同时更新 `.env` 和 Open WebUI 管理面板中的对应连接。
+LiteLLM 和 Open WebUI 的数据库配置具有持久化优先级。轮换 `OPENWEBUI_API_KEY` 后，必须同时更新 `.env` 和 Open WebUI 管理面板中的对应连接。
+
+Open WebUI 当前共享服务 Key 只能记入独立服务账户，不能证明个人调用归属，不得据此静默扣减个人公益额度。发布逐用户计费前，必须验收用户级令牌交换或可信身份透传。未取得 Open WebUI 书面或企业许可时，还必须监控并限制滚动 30 日直接用户不超过 50 人。
 
 ## 4. 成本和访问策略
 
