@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 已打通：认证成员通过主站 OIDC 登录 Open WebUI，Open WebUI 使用燕中 API 的受限服务 Key，再由燕中 API 经 LiteLLM 调用获授权模型。开放注册与本地密码体系保持关闭，模型请求不再绕过统一额度与审计控制面。
+截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 的 PoC 已打通。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现。自主 AI Web 目前完成登录到个人主体 grant，真实模型代理、个人额度扣减和逐请求审计仍是下一增量，不能把现有共享服务 Key 解释为个人调用。
 
 普通请求、SSE 流式输出、LiteLLM 服务 Key 的模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已有 PoC 证据。燕中 API 用户虚拟 Key 的预算、模型权限与额度流水由控制面另行验收；Open WebUI 当前共享服务 Key 尚不能单独证明逐用户请求归因。文本和图片能力仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
 
@@ -97,11 +97,12 @@ LiteLLM：上游路由 / 重试 / 成本核对
 
 ## 本地开发环境
 
-当前最小环境由三个 Docker 容器组成：
+当前默认 PoC 仍由三个 Docker 容器组成；自主 AI Web 使用 `yancore` profile 独立验收：
 
 - `litellm`：接收统一格式的模型请求，执行鉴权、路由、预算和统计。
 - `db`：PostgreSQL 数据库，保存 LiteLLM 的配置、虚拟 Key 和用量数据。
 - `open-webui`：提供内部测试使用的聊天、会话和流式交互界面。
+- `ai-web`：燕中自主登录、主体会话和后续模型 BFF，阶段 1 监听本机 3002。
 
 关键配置文件：
 
@@ -117,6 +118,16 @@ cd C:\Dev\yanchuaner\ai_yanchuaner
 docker compose pull
 docker compose up -d
 docker compose ps
+```
+
+独立启动自主 AI Web：
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm typecheck:ai-web
+pnpm test:ai-web
+pnpm build:ai-web
+docker compose --profile yancore up -d --build ai-web
 ```
 
 一键检查 Compose、容器和网关健康状态：
@@ -164,6 +175,7 @@ docker compose logs -f litellm
 
 - 管理界面：`http://localhost:4000/ui`
 - 燕中 AI 测试界面：`http://localhost:3001`
+- 自主燕中 AI Web：`http://localhost:3002`（`yancore` profile）
 - 存活检查：`http://localhost:4000/health/liveliness`
 - OpenAI 兼容 API：`http://localhost:4000/v1`
 
@@ -258,12 +270,11 @@ Open WebUI 继续作为明确标识的第三方客户端底座。当前 `WEBUI_N
 - 核心接口具备自动化测试，部署和回滚步骤可重复执行。
 - 桌面端和移动端核心流程均可正常使用。
 
-## 项目结构（规划）
+## 项目结构
 
 ```text
 ai_yanchuaner/
-├─ apps/                 # 用户工作台与服务端应用
-├─ packages/             # 共享类型、客户端和业务组件
+├─ apps/ai-web/          # 自主 Next.js 工作台、OIDC、加密会话与 YanCore BFF
 ├─ gateway/              # LiteLLM 配置与扩展（已建立）
 ├─ deploy/               # 部署编排和运维配置
 ├─ docs/                 # 产品、架构、决策与生态文档
@@ -273,7 +284,7 @@ ai_yanchuaner/
 └─ README.md
 ```
 
-代码初始化后，以实际结构替换本节，不同时保留两套目录说明。
+阶段 1 模块设计、威胁边界、验收和回滚见 [自主 AI Web/BFF](docs/phase-1-ai-web-bff.md)。
 
 ## 协作约定
 

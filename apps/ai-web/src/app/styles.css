@@ -1,0 +1,144 @@
+:root {
+  color-scheme: dark;
+  --bg: #070b13;
+  --surface: #101824;
+  --surface-strong: #151f2d;
+  --border: #2b394b;
+  --text: #f4f7fb;
+  --muted: #9eacbc;
+  --cyan: #67d4e8;
+  --gold: #f0c66b;
+  --danger: #ff8c8c;
+}
+
+* { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 12% 16%, rgba(255,255,255,.2) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 78% 24%, rgba(103,212,232,.25) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 42% 82%, rgba(240,198,107,.2) 0 1px, transparent 1.5px);
+  background-size: 180px 180px, 240px 240px, 210px 210px;
+  color: var(--text);
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0;
+}
+
+button, a { font: inherit; }
+
+.topbar {
+  align-items: center;
+  border-bottom: 1px solid rgba(43,57,75,.72);
+  display: flex;
+  height: 64px;
+  justify-content: space-between;
+  padding: 0 clamp(20px, 5vw, 64px);
+}
+
+.brand {
+  align-items: center;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 17px;
+  font-weight: 680;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.brand-mark {
+  align-items: center;
+  color: var(--cyan);
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.phase {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workspace {
+  margin: 0 auto;
+  max-width: 960px;
+  padding: clamp(56px, 9vh, 96px) 24px 64px;
+}
+
+.workspace-heading { max-width: 660px; }
+.workspace-heading h1 { font-size: clamp(32px, 5vw, 54px); line-height: 1.12; margin: 10px 0 18px; }
+.workspace-heading > p:last-child { color: var(--muted); font-size: 17px; line-height: 1.7; margin: 0; }
+.eyebrow { color: var(--gold); font-size: 12px; font-weight: 750; margin: 0; }
+
+.access-panel {
+  align-items: center;
+  background: rgba(16,24,36,.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr auto;
+  margin-top: 40px;
+  padding: 22px;
+}
+
+.access-copy { align-items: flex-start; display: flex; gap: 14px; min-width: 0; }
+.access-copy > svg { color: var(--cyan); flex: 0 0 auto; margin-top: 2px; }
+.access-copy h2 { font-size: 16px; margin: 0 0 7px; }
+.access-copy p { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
+
+.primary-action {
+  align-items: center;
+  background: var(--cyan);
+  border: 1px solid var(--cyan);
+  border-radius: 6px;
+  color: #061016;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 720;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  text-decoration: none;
+}
+
+.primary-action:hover { background: #87e3f1; }
+.primary-action:focus-visible, .icon-action:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.authenticated { grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr) 40px; }
+
+.session-facts { display: grid; gap: 10px; margin: 0; }
+.session-facts div { display: grid; gap: 12px; grid-template-columns: 76px 1fr; }
+.session-facts dt { color: var(--muted); font-size: 12px; }
+.session-facts dd { font-size: 13px; margin: 0; overflow-wrap: anywhere; }
+
+.icon-action {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.icon-action:hover { border-color: var(--danger); color: var(--danger); }
+.status-line { color: var(--muted); font-size: 14px; margin-top: 40px; }
+
+@media (max-width: 720px) {
+  .workspace { padding-left: 18px; padding-right: 18px; }
+  .access-panel, .authenticated { align-items: stretch; grid-template-columns: 1fr; }
+  .primary-action { width: 100%; }
+  .icon-action { justify-self: end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}

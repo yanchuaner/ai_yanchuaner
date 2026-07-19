@@ -1,0 +1,30 @@
+{
+  "name": "@yanchuaner/ai-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3001",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 3001",
+    "test": "tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.19",
+    "lucide-react": "0.542.0",
+    "openid-client": "6.8.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.57",
+    "@types/react": "18.3.23",
+    "@types/react-dom": "18.3.7",
+    "tsx": "4.20.3",
+    "typescript": "5.9.2"
+  }
+}

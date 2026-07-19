@@ -7,6 +7,41 @@ x-logging: &default-logging
     max-file: "5"
 
 services:
+  ai-web:
+    profiles: ["yancore"]
+    build:
+      context: .
+      dockerfile: apps/ai-web/Dockerfile
+    image: ai-yanchuaner/ai-web:phase-1
+    restart: unless-stopped
+    environment:
+      AI_WEB_PUBLIC_URL: ${AI_WEB_PUBLIC_URL:-http://localhost:3002}
+      AI_WEB_SESSION_SECRET: ${AI_WEB_SESSION_SECRET:-}
+      AI_WEB_ALLOW_INSECURE_INTERNAL_HTTP: ${AI_WEB_ALLOW_INSECURE_INTERNAL_HTTP:-false}
+      YANCORE_OIDC_ISSUER: ${YANCORE_OIDC_ISSUER:-http://localhost:3000}
+      YANCORE_OIDC_DISCOVERY_URL: ${YANCORE_OIDC_DISCOVERY_URL:-http://host.docker.internal:3000/api/oauth/.well-known/openid-configuration}
+      YANCORE_OIDC_CLIENT_ID: ${YANCORE_OIDC_CLIENT_ID:-}
+      YANCORE_OIDC_CLIENT_SECRET: ${YANCORE_OIDC_CLIENT_SECRET:-}
+      YANCORE_API_BASE_URL: ${YANCORE_API_BASE_URL:-http://api-gateway:3000}
+      YANCORE_SUBJECT_EXCHANGE_CLIENT_ID: ${YANCORE_SUBJECT_EXCHANGE_CLIENT_ID:-ai-yancore-bff}
+      YANCORE_SUBJECT_EXCHANGE_CLIENT_SECRET: ${YANCORE_SUBJECT_EXCHANGE_CLIENT_SECRET:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 512m
+    logging: *default-logging
+    networks:
+      - ai-core
+    ports:
+      - "127.0.0.1:${AI_WEB_HOST_PORT:-3002}:3001"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://localhost:3001/api/health').then(r=>{if(!r.ok)process.exit(1)})"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   db:
     image: postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     restart: unless-stopped

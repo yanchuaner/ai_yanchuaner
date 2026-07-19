@@ -1,6 +1,6 @@
 # 第三方软件许可清单
 
-本仓库不包含 LiteLLM、Open WebUI 或 PostgreSQL 的源码副本，但 Docker Compose 会拉取并运行固定摘要的第三方镜像。第三方代码版权继续归各权利人所有，燕中生态不将其声明为自主代码。
+本仓库不包含 LiteLLM、Open WebUI 或 PostgreSQL 的源码副本，但 Docker Compose 会拉取并运行固定摘要的第三方镜像。自主 AI Web 通过 npm 使用下列框架和协议依赖；第三方代码版权继续归各权利人所有，燕中生态不将其声明为自主代码。
 
 ## 固定版本与来源
 
@@ -9,6 +9,13 @@
 | LiteLLM Database | `sha256:64d3547e0b131bf4638342e52c12bc46d6f1d9b8498e4b731ff31be5ab316ea9` | `BerriAI/litellm@b3086ccd74553565c9a39716e72303ae985555f9`，1.92.0 stable cut | 仓库 `enterprise/` 外为 MIT；发布前仍须确认所用镜像未启用企业专有内容 |
 | Open WebUI | `v0.10.2@sha256:9fcea9c6e32ab60b0498f3986c6cdf651ddbe61db48d2213a3d28048ddd673d4` | `open-webui/open-webui@ecd48e2f718220a6400ecf49eafd4867a38feb10` | Open WebUI License；品牌修改仅在滚动 30 日直接用户不超过 50 人、取得书面许可或取得企业许可时允许 |
 | PostgreSQL | `16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777` | PostgreSQL 16.14 | PostgreSQL License；Docker 官方镜像包装脚本为 MIT |
+| Next.js | `15.5.19` | `vercel/next.js` | MIT |
+| React / React DOM | `18.3.1` | `facebook/react` | MIT |
+| openid-client | `6.8.4` | `panva/openid-client` | MIT；OpenID Connect 客户端协议实现 |
+| Lucide React | `0.542.0` | `lucide-icons/lucide` | ISC；Feather 衍生部分为 MIT |
+| Node.js 官方镜像 | `22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3` | `nodejs/docker-node@c517c39b81a3dd02485433f1fd7818b8220e1ada` | Node.js 与 Debian 基础镜像各自许可；仅作构建和运行时 |
+
+npm 直接与传递依赖的完整版本由 `pnpm-lock.yaml` 固定，许可文本随安装包发布。镜像或 npm 依赖升级都必须同步复核本文件。
 
 任何镜像升级必须同时更新摘要、源码 revision、许可证文本和验收记录。无法定位源码 revision 或许可证的镜像不得进入生产。
 
