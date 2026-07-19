@@ -3,10 +3,9 @@
 燕中 AI 保留唯一 LiteLLM 数据面，Open WebUI 只作为过渡客户端。所有面向用户、工作台和 Agent 的调用先经过 `api_yanchuaner` 中的 YanCore 主体与权益控制面，再由兼容网关和受限内部渠道进入 LiteLLM。
 
 ```text
-Open WebUI / Agent / 校友 API Key
-              |
-              v
-      New API (api-gateway)
+自主 AI Web BFF --逐登录应用 Key--+
+Open WebUI --------共享服务 Key-----+--> New API (api-gateway)
+Agent / 校友 API Key ---------------+
               |
               v
      LiteLLM (litellm-gateway)
@@ -23,7 +22,7 @@ Open WebUI / Agent / 校友 API Key
 
 ## 当前归因边界
 
-阶段 1 已定义 YanCore Subject Grant 作为用户级委托协议，见 `docs/yancore-subject-grant-client.md`。自主 AI Web 入口完成前，Open WebUI 仍使用受限服务 Key；它不能证明个人调用归属，只能记入独立服务账户，不得静默扣减个人公益额度。
+阶段 1 已定义 YanCore Subject Grant 并为自主 AI Web 实现逐登录、短期、有限预算的应用 Key，见 `docs/yancore-subject-grant-client.md`。自主路径的模型请求可归因到映射后的 API 用户；Open WebUI 仍使用受限服务 Key，只能记入独立服务账户，两条账路不得静默合并。
 
 ## 第三方与品牌边界
 

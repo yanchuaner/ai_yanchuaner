@@ -22,7 +22,7 @@
 | 模块 | 优先级 | 验收后目标 |
 | --- | --- | --- |
 | Open WebUI 核心交互与燕中设计层 | P1/P2 | 自主客户端覆盖登录后首页、对话、文件、搜索、知识库和助手，再将 Open WebUI 降为可替换依赖 |
-| Open WebUI 到控制面的用户级归因 | P0/P1 | 每次调用携带可验证的用户/应用主体；共享服务 Key 不再作为用户余额归因依据 |
+| Open WebUI 到控制面的用户级归因 | P1/P2 | 自主 AI Web 已使用逐登录应用 Key；Open WebUI 共享服务路径继续隔离，待其能力被自主客户端替换 |
 | LiteLLM 数据库内业务配置 | P1 | 渠道与成本配置由自主控制面声明和审计，LiteLLM 仅执行路由 |
 | 本机脚本型运维 | P2 | 迁移到可审计的部署流水线、Secret 管理、监控与告警 |
 
@@ -35,7 +35,7 @@
 | `deploy/nginx/**` | 燕中部署边界与反向代理配置 | 自主内容暂未授予公众许可 |
 | `README.md`、`docs/**`、治理文件 | 燕中产品、架构、验收、来源和安全文档 | 自主内容暂未授予公众许可 |
 | `docs/yancore-subject-grant-client.md` | 燕中主体委托客户端契约，未复制 Open WebUI/New API 实现 | 自主内容暂未授予公众许可 |
-| `apps/ai-web/src/**`、`apps/ai-web/Dockerfile` | 独立需求、OIDC/BFF 设计、YanCore 客户端、加密会话、燕中界面和自动化测试 | 自主内容暂未授予公众许可 |
+| `apps/ai-web/src/**`、`apps/ai-web/Dockerfile` | 独立需求、OIDC/BFF 设计、YanCore 客户端、加密会话、SSE 代理、燕中对话界面和自动化测试 | 自主内容暂未授予公众许可 |
 | 根 `package.json`、`pnpm-workspace.yaml` | 燕中自主应用工作区与依赖脚本白名单 | 自主内容暂未授予公众许可 |
 
 “已自主实现”只表示当前 Git 历史与文件内容未显示复制第三方实现，不自动决定权利人、贡献转让或最终开源许可证。

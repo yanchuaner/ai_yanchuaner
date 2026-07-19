@@ -6,6 +6,12 @@ type ExchangeResponse = {
   success: boolean;
   data?: {
     grant?: string;
+    credential?: {
+      access_key?: string;
+      models?: string[];
+      quota_units?: number;
+      expires_at?: number;
+    };
     subject?: {
       user_id?: number;
       application?: string;
@@ -23,6 +29,9 @@ export type YanCoreExchange = {
   audience: "yanchuaner-ai";
   scopes: string;
   expiresAt: number;
+  accessKey: string;
+  models: string[];
+  quotaUnits: number;
 };
 
 export async function exchangeMainSiteToken(subjectToken: string): Promise<YanCoreExchange> {
@@ -42,6 +51,7 @@ export async function exchangeMainSiteToken(subjectToken: string): Promise<YanCo
   });
   const body = (await response.json().catch(() => null)) as ExchangeResponse | null;
   const subject = body?.data?.subject;
+  const credential = body?.data?.credential;
   if (
     !response.ok ||
     !body?.success ||
@@ -50,7 +60,16 @@ export async function exchangeMainSiteToken(subjectToken: string): Promise<YanCo
     subject.application !== "ai-web" ||
     subject.audience !== "yanchuaner-ai" ||
     typeof subject.scopes !== "string" ||
-    typeof subject.expires_at !== "number"
+    typeof subject.expires_at !== "number" ||
+    typeof credential?.access_key !== "string" ||
+    !/^sk-yc_[0-9a-f]{64}$/.test(credential.access_key) ||
+    !Array.isArray(credential.models) ||
+    credential.models.length === 0 ||
+    !credential.models.every((model) => typeof model === "string" && model.length > 0 && model.length <= 128) ||
+    typeof credential.quota_units !== "number" ||
+    !Number.isInteger(credential.quota_units) ||
+    credential.quota_units <= 0 ||
+    credential.expires_at !== subject.expires_at
   ) {
     throw new Error("YanCore subject exchange failed");
   }
@@ -61,5 +80,8 @@ export async function exchangeMainSiteToken(subjectToken: string): Promise<YanCo
     audience: "yanchuaner-ai",
     scopes: subject.scopes,
     expiresAt: subject.expires_at,
+    accessKey: credential.access_key,
+    models: credential.models,
+    quotaUnits: credential.quota_units,
   };
 }

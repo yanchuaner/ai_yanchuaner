@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isValidAiSession, isValidLoginTransaction, seal, unseal, type AiSession } from "./session";
+import { isValidAiSession, isValidLoginTransaction, publicAiSession, seal, unseal, type AiSession } from "./session";
 
 const secret = "01234567890123456789012345678901";
 
@@ -26,8 +26,30 @@ test("login and YanCore sessions fail closed after expiry", () => {
     subject: { userId: 1, application: "ai-web", audience: "yanchuaner-ai", scopes: "chat:read chat:write" },
     grant: "grant",
     grantExpiresAt: 999,
+    credential: {
+      accessKey: `sk-yc_${"a".repeat(64)}`,
+      models: ["gpt-4.1-mini"],
+      quotaUnits: 50000,
+      expiresAt: 999,
+    },
   };
   assert.equal(isValidAiSession(session, 1_000), false);
   session.grantExpiresAt = 1_001;
+  session.credential.expiresAt = 1_001;
   assert.equal(isValidAiSession(session, 1_000), true);
+  const publicSession = publicAiSession(session);
+  assert.deepEqual(publicSession.models, ["gpt-4.1-mini"]);
+  assert.equal("accessKey" in publicSession, false);
+  assert.doesNotMatch(JSON.stringify(publicSession), /sk-yc_/);
+});
+
+test("AI session validation rejects missing application credential policy", () => {
+  const session: AiSession = {
+    identity: { sub: "member-1", name: "Member", role: "alumni" },
+    subject: { userId: 1, application: "ai-web", audience: "yanchuaner-ai", scopes: "chat:read chat:write" },
+    grant: "grant",
+    grantExpiresAt: 1_001,
+    credential: { accessKey: "sk-shared", models: [], quotaUnits: 0, expiresAt: 1_001 },
+  };
+  assert.equal(isValidAiSession(session, 1_000), false);
 });

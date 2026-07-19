@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiWebConfig } from "@/lib/config";
-import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
+import { cookieOptions, isValidAiSession, publicAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -13,13 +13,5 @@ export function GET(request: NextRequest) {
     response.headers.set("Cache-Control", "no-store");
     return response;
   }
-  return NextResponse.json(
-    {
-      authenticated: true,
-      identity: session.identity,
-      subject: session.subject,
-      expiresAt: session.grantExpiresAt,
-    },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+  return NextResponse.json(publicAiSession(session), { headers: { "Cache-Control": "no-store" } });
 }

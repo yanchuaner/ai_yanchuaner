@@ -24,6 +24,12 @@ export type AiSession = {
   };
   grant: string;
   grantExpiresAt: number;
+  credential: {
+    accessKey: string;
+    models: string[];
+    quotaUnits: number;
+    expiresAt: number;
+  };
 };
 
 type CookieOptions = {
@@ -95,6 +101,25 @@ export function isValidAiSession(value: AiSession | null, now = Math.floor(Date.
       value.subject.audience === "yanchuaner-ai" &&
       value.grant &&
       Number.isFinite(value.grantExpiresAt) &&
-      value.grantExpiresAt > now,
+      value.grantExpiresAt > now &&
+      /^sk-yc_[0-9a-f]{64}$/.test(value.credential?.accessKey) &&
+      Array.isArray(value.credential?.models) &&
+      value.credential.models.length > 0 &&
+      value.credential.models.length <= 32 &&
+      value.credential.models.every((model) => typeof model === "string" && model.length > 0 && model.length <= 128) &&
+      Number.isInteger(value.credential?.quotaUnits) &&
+      value.credential.quotaUnits > 0 &&
+      value.credential.expiresAt === value.grantExpiresAt,
   );
+}
+
+export function publicAiSession(value: AiSession) {
+  return {
+    authenticated: true as const,
+    identity: value.identity,
+    subject: value.subject,
+    models: value.credential.models,
+    sessionQuotaUnits: value.credential.quotaUnits,
+    expiresAt: value.grantExpiresAt,
+  };
 }

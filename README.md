@@ -6,14 +6,14 @@
 
 ## 当前状态
 
-截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 的 PoC 已打通。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现。自主 AI Web 目前完成登录到个人主体 grant，真实模型代理、个人额度扣减和逐请求审计仍是下一增量，不能把现有共享服务 Key 解释为个人调用。
+截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 的 PoC 已打通。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现。自主 AI Web 已实现登录、15 分钟逐用户应用 Key、模型白名单、会话预算、SSE 对话代理和最小对话界面；请求进入燕中 API 现有 `/v1` 扣费与用量日志链路。真实 OpenAI/DeepSeek、失败退款和用户日志查询仍须在集成环境验收，不能把实现完成等同于生产验收完成。
 
 普通请求、SSE 流式输出、LiteLLM 服务 Key 的模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已有 PoC 证据。燕中 API 用户虚拟 Key 的预算、模型权限与额度流水由控制面另行验收；Open WebUI 当前共享服务 Key 尚不能单独证明逐用户请求归因。文本和图片能力仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
 
 ## 暑期预览目标
 
 - 认证在校生、校友与教师使用主站账号进入独立工作台，不维护共享管理员账号。
-- 网页工作台只通过燕中 API 的受限服务 Key 调用模型；LiteLLM 负责上游路由，不作为用户余额真值。
+- 自主网页工作台只通过燕中 API 按登录签发的短期应用 Key 调用模型；LiteLLM 负责上游路由，不作为用户余额真值。
 - 用户侧清晰展示可用模型、隐私边界与用量；公益额度、API Key 和逐请求账单由 `api_yanchuaner` 统一管理。
 - 完成文本与图片核心场景、移动端体验、失败提示、预算耗尽与恢复演练。
 - LiteLLM 管理界面不开放公网，只允许管理员通过本地隧道访问。
@@ -102,7 +102,7 @@ LiteLLM：上游路由 / 重试 / 成本核对
 - `litellm`：接收统一格式的模型请求，执行鉴权、路由、预算和统计。
 - `db`：PostgreSQL 数据库，保存 LiteLLM 的配置、虚拟 Key 和用量数据。
 - `open-webui`：提供内部测试使用的聊天、会话和流式交互界面。
-- `ai-web`：燕中自主登录、主体会话和后续模型 BFF，阶段 1 监听本机 3002。
+- `ai-web`：燕中自主登录、主体会话、SSE 模型 BFF 与最小对话工作台，阶段 1 监听本机 3002。
 
 关键配置文件：
 
@@ -179,7 +179,7 @@ docker compose logs -f litellm
 - 存活检查：`http://localhost:4000/health/liveliness`
 - OpenAI 兼容 API：`http://localhost:4000/v1`
 
-Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_API_KEY` 使用燕中 API 签发的受限服务 Key。该 Key 用于工作台到控制面的服务鉴权，当前不能替代逐用户用量归因；逐用户归因完成前不得据此扣减个人权益。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本直连 LiteLLM，当前实例已关闭开放注册。
+Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_API_KEY` 使用燕中 API 签发的受限服务 Key。该 Key 仍只能形成服务账户归因；自主 `ai-web` 已改用逐登录短期 Key，两条路径不得混账。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本直连 LiteLLM，当前实例已关闭开放注册。
 
 全新实例默认禁止注册。首次初始化时，在本地 `.env` 中临时设置 `OPENWEBUI_ENABLE_SIGNUP=True` 并启动服务，创建首个管理员后，立即在 `管理员面板 → 设置 → 身份验证` 中关闭新用户注册，再将该变量改回 `False`。
 

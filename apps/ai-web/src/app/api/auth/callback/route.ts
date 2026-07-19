@@ -36,6 +36,12 @@ export async function GET(request: NextRequest) {
       },
       grant: exchange.grant,
       grantExpiresAt: exchange.expiresAt,
+      credential: {
+        accessKey: exchange.accessKey,
+        models: exchange.models,
+        quotaUnits: exchange.quotaUnits,
+        expiresAt: exchange.expiresAt,
+      },
     };
     const maxAge = Math.max(1, exchange.expiresAt - Math.floor(Date.now() / 1000));
     const response = NextResponse.redirect(config.publicUrl);
