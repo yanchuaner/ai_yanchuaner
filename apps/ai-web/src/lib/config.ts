@@ -1,5 +1,7 @@
 import "server-only";
 
+import { isAllowedPublicUrl } from "@/lib/config-policy";
+
 export type AiWebConfig = {
   publicUrl: URL;
   sessionSecret: string;
@@ -40,8 +42,11 @@ export function getAiWebConfig(): AiWebConfig {
   if (sessionSecret.length < 32 || exchangeSecret.length < 32) {
     throw new Error("AI Web session and exchange secrets must contain at least 32 characters");
   }
-  const publicUrl = requiredUrl("AI_WEB_PUBLIC_URL");
   const allowInsecureInternalHttp = process.env.AI_WEB_ALLOW_INSECURE_INTERNAL_HTTP === "true";
+  const publicUrl = requiredUrl("AI_WEB_PUBLIC_URL", false);
+  if (!isAllowedPublicUrl(publicUrl, process.env.NODE_ENV === "production", allowInsecureInternalHttp)) {
+    throw new Error("AI_WEB_PUBLIC_URL must use HTTPS in production except explicit loopback development");
+  }
   cachedConfig = {
     publicUrl,
     sessionSecret,

@@ -42,7 +42,7 @@
 
 ## 安全约束
 
-- 生产公开 URL、Issuer 和外部 OIDC 端点必须使用 HTTPS；本地明文内部 HTTP 必须显式开启；
+- 生产公开 URL、Issuer 和外部 OIDC 端点必须使用 HTTPS；本地明文内部 HTTP 必须显式开启，且生产模式的公开 HTTP URL 只接受回环 hostname；
 - 登录事务 5 分钟过期，YanCore grant 最长 15 分钟；
 - 会话 Cookie 为 `HttpOnly + SameSite=Lax`，HTTPS 时强制 `Secure`；
 - Cookie 密文使用随机 96 位 IV 和 AES-256-GCM 认证标签；篡改、过期或结构错误一律按未登录处理；
