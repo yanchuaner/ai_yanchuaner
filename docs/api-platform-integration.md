@@ -1,6 +1,6 @@
 # API 平台集成
 
-燕中 AI 保留唯一 LiteLLM 数据面和 Open WebUI。所有面向用户、工作台和 Agent 的调用先经过 `api_yanchuaner` 中的 New API 控制面，再由受限内部渠道进入 LiteLLM。
+燕中 AI 保留唯一 LiteLLM 数据面，Open WebUI 只作为过渡客户端。所有面向用户、工作台和 Agent 的调用先经过 `api_yanchuaner` 中的 YanCore 主体与权益控制面，再由兼容网关和受限内部渠道进入 LiteLLM。
 
 ```text
 Open WebUI / Agent / 校友 API Key
@@ -23,8 +23,8 @@ Open WebUI / Agent / 校友 API Key
 
 ## 当前归因边界
 
-Open WebUI 目前使用一个受限服务 Key 调用燕中 API。OIDC 能证明用户登录 Open WebUI，但 Open WebUI 的模型请求尚未向控制面传递可验证的用户主体，因此服务 Key 日志不能直接作为个人权益扣减依据。预览发布前必须选择并验收用户级令牌交换或可信身份透传；在此之前，AI 工作台用量只能记入独立服务账户，不得静默扣减个人公益额度。
+阶段 1 已定义 YanCore Subject Grant 作为用户级委托协议，见 `docs/yancore-subject-grant-client.md`。自主 AI Web 入口完成前，Open WebUI 仍使用受限服务 Key；它不能证明个人调用归属，只能记入独立服务账户，不得静默扣减个人公益额度。
 
 ## 第三方与品牌边界
 
-LiteLLM 和 Open WebUI 均是外部依赖，不属于燕中自主业务代码。固定镜像、源码 revision、许可全文与 Open WebUI 品牌限制见 `THIRD_PARTY_NOTICES.md`；替换路线见 `docs/copyright-matrix.md`。未取得 Open WebUI 书面或企业许可时，燕中品牌部署必须保持滚动 30 日直接用户不超过 50 人。
+LiteLLM 和 Open WebUI 均是外部依赖，不属于燕中自主业务代码。缺少 Open WebUI 品牌授权不会阻止 YanCore 和自主 AI Web 研发，但 Open WebUI 不得作为燕中原创产品入口公开扩张；未取得书面或企业许可时必须保留必要标识或满足其许可证阈值。固定镜像、源码 revision 与许可见 `THIRD_PARTY_NOTICES.md`。
