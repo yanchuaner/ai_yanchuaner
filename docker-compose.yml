@@ -72,8 +72,16 @@ services:
       UI_USERNAME: ${LITELLM_UI_USERNAME:-admin}
       UI_PASSWORD: ${LITELLM_UI_PASSWORD:-${LITELLM_MASTER_KEY}}
       STORE_MODEL_IN_DB: "True"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_API_BASE_URL: ${DEEPSEEK_API_BASE_URL:-https://api.deepseek.com/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1}
     volumes:
       - ./gateway/config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${LITELLM_HOST_BIND:-127.0.0.1}:${LITELLM_HOST_PORT:-4000}:4000"
     mem_limit: 1536m
     logging: *default-logging
     networks:
@@ -81,8 +89,6 @@ services:
       ai-core:
         aliases:
           - litellm-gateway
-    ports:
-      - "127.0.0.1:4000:4000"
     depends_on:
       db:
         condition: service_healthy

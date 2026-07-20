@@ -6,9 +6,11 @@
 
 ## 当前状态
 
-截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 的 PoC 已打通。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现。自主 AI Web 已实现登录、15 分钟逐用户应用 Key、模型白名单、会话预算、SSE 对话代理和最小对话界面；请求进入燕中 API 现有 `/v1` 扣费与用量日志链路。真实 OpenAI/DeepSeek、失败退款和用户日志查询仍须在集成环境验收，不能把实现完成等同于生产验收完成。
+截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 的 PoC 已打通。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现。自主 AI Web 已实现登录、15 分钟逐用户应用 Key、模型白名单、会话预算、SSE 对话代理和最小对话界面；请求进入燕中 API 现有 `/v1` 扣费与用量日志链路。LiteLLM 现在以独立配置声明三个控制面路由名，供应商模型、地址和密钥仅从部署环境读取。真实 OpenAI/DeepSeek、失败退款和用户日志查询仍须在集成环境验收，不能把实现完成等同于生产验收完成。
 
 普通请求、SSE 流式输出、LiteLLM 服务 Key 的模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已有 PoC 证据。燕中 API 用户虚拟 Key 的预算、模型权限与额度流水由控制面另行验收；Open WebUI 当前共享服务 Key 尚不能单独证明逐用户请求归因。文本和图片能力仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
+
+阶段 1 隔离 Docker 集成验收记录见 [阶段 1 集成验收记录](docs/phase-1-integration-acceptance.md)。本机测试上游只用于验证路由、额度和审计行为，不等同于真实 OpenAI/DeepSeek 供应商验收。
 
 ## 暑期预览目标
 
