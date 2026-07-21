@@ -16,7 +16,9 @@ Agent / 校友 API Key ---------------+
 
 两个仓库通过外部 Docker 网络 `yanchuaner-ai-core` 连接。Open WebUI 使用 New API 签发的独立服务 Token，不再直接使用 LiteLLM 虚拟 Key；LiteLLM master key 仍只用于本地管理。
 
-用户身份由主站统一提供。Open WebUI 关闭本地注册，通过主站 OIDC 自动创建已认证校友账号；API 平台使用同一身份源的独立 OAuth 客户端，两个下游互不复用客户端密钥。容器内通过 `host.docker.internal` 访问主站的发现、令牌和用户信息端点，浏览器授权与回调仍使用 `localhost` 或正式 HTTPS 域名。
+用户身份由主站统一提供。Open WebUI 同时关闭登录表单、密码鉴权、本地注册和首次本地管理员注册，通过主站 OIDC 自动创建已认证成员账号；`role=admin` 映射为管理员，`alumni/student/teacher` 映射为普通用户。API 平台使用同一身份源的独立 OAuth 客户端，两个下游互不复用客户端密钥。容器内通过 `host.docker.internal` 访问主站的发现、令牌和用户信息端点，浏览器授权与回调仍使用 `localhost` 或正式 HTTPS 域名。
+
+Open WebUI `0.10.2` 会把全新数据库中的首个 OAuth 用户提升为管理员，先于角色管理生效。首次启动只能监听回环地址，由受信任的主站管理员先登录，完成 `scripts/verify-openwebui-oidc-callback.ps1` 后才能开放反向代理；这属于过渡依赖的明确运行边界，不属于燕中自主身份实现。
 
 启动顺序由 `api_yanchuaner/scripts/bootstrap-integrated-stack.ps1` 统一处理。单独启动本仓库前，必须确保外部网络和 `api-gateway` 已存在，否则 Open WebUI 虽可启动但不能调用模型。
 

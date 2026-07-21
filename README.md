@@ -183,9 +183,17 @@ docker compose logs -f litellm
 
 Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_API_KEY` 使用燕中 API 签发的受限服务 Key。该 Key 仍只能形成服务账户归因；自主 `ai-web` 已改用逐登录短期 Key，两条路径不得混账。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本直连 LiteLLM，当前实例已关闭开放注册。
 
-全新实例默认禁止注册。首次初始化时，在本地 `.env` 中临时设置 `OPENWEBUI_ENABLE_SIGNUP=True` 并启动服务，创建首个管理员后，立即在 `管理员面板 → 设置 → 身份验证` 中关闭新用户注册，再将该变量改回 `False`。
+全新实例默认禁止本地登录、密码鉴权和注册，只允许主站 OIDC。Open WebUI 上游会把全新数据库中的首个 OAuth 用户提升为管理员，因此首次启动必须保持 `127.0.0.1` 监听且不开放反向代理，由受信任的主站管理员先完成一次 OIDC 登录；确认管理员身份后才能允许其他认证成员访问。不得通过临时开放本地注册完成初始化。
 
-重置唯一 Open WebUI 管理员时，运行以下脚本并按提示隐藏输入两次新密码。脚本会保留原账号数据，将登录邮箱统一为 `yanchuaner@yanchuaner.cn`：
+在可整体销毁的 Open WebUI 独立数据卷中，可执行真实消费端验收：
+
+```powershell
+.\scripts\verify-openwebui-oidc-callback.ps1 -AllowLocalMutation
+```
+
+脚本只允许 localhost，验证管理员首次引导、校友重复登录复用、主站角色声明、本地登录/注册拒绝和运行时 OIDC 配置；不会输出授权码、Token 或密码。详细边界、验收证据与回滚见 [阶段 3C Open WebUI OIDC 验收](docs/phase-3-openwebui-oidc-acceptance.md)。
+
+`reset-openwebui-admin.ps1` 只保留为历史 PoC 数据恢复工具；默认部署已关闭密码鉴权，重置密码不会重新开放登录入口。管理员权限日常由主站 OIDC `role=admin` 管理。
 
 ```powershell
 .\scripts\reset-openwebui-admin.ps1

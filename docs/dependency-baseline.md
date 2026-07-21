@@ -20,7 +20,7 @@
 
 1. 先固定镜像 revision、许可和回滚 digest。
 2. 再定义网络、端口、卷、Secret、健康检查、资源与日志上限。
-3. 然后配置主站 OIDC 和燕中 API 受限服务 Key。
+3. 然后配置主站 OIDC、关闭 Open WebUI 本地密码入口并启用受信任角色声明，再配置燕中 API 受限服务 Key。
 4. 自主 AI Web 先完成 OIDC、加密会话和 YanCore 主体交换。
 5. 最后才接入模型与执行聊天、图片、额度、备份和恢复验收。
 
@@ -37,6 +37,7 @@ pnpm 安装脚本仅批准 `esbuild` 与 `sharp`，`allowBuilds` 之外的依赖
 - LICENSE、NOTICE、品牌条款与企业目录边界复核；
 - `docker compose config --quiet`、健康检查、文本/图片冒烟、重启恢复和备份恢复；
 - Open WebUI 持久化配置覆盖环境变量的检查；
+- Open WebUI `enable_signup=false`、`enable_login_form=false`、密码接口 403、OIDC 角色白名单和受控首次管理员引导；
 - 回滚 digest、数据库兼容性和不可逆迁移说明。
 
 在 Open WebUI 用户级身份归因完成前，共享服务 Key 只记入独立服务账户，不得据此扣减个人权益。在取得书面或企业品牌许可前，还必须保持滚动 30 日直接用户不超过 50 人。
