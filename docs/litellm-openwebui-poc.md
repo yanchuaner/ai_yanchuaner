@@ -1,5 +1,7 @@
 # LiteLLM 与 Open WebUI PoC 验收记录
 
+> 本文记录控制面接入前的历史直连 PoC，不是当前生产部署说明。现行链路与密钥边界以 `docs/api-platform-integration.md` 和 `docs/deployment.md` 为准；不得按本文把 Open WebUI 重新直连 LiteLLM。
+
 ## 文档信息
 
 - 验收日期：2026 年 7 月 14 日

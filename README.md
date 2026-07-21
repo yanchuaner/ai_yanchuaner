@@ -2,18 +2,20 @@
 
 燕中 AI 是面向深圳市燕川中学校友、在校师生与校友会共建者的统一 AI 服务项目。项目将为燕中生态中的网站、智能助手、内容工具和开发者能力提供一致、可控的模型访问入口。
 
-当前阶段以“2026 燕中生态暑期预览”为目标，不建设公开售卖型 API 中转站。正式版计划在大二上学期持续一个学期，根据真实使用、成本、隐私与运维数据继续打磨。
+当前阶段以“2026 燕中生态暑期预览”为目标，不建设公开售卖型 API 中转站。正式版计划在大二上学期持续一个学期，根据真实使用、成本、隐私与运维数据继续打磨。阶段 1 开始建设燕中自有的 YanCore 主体授权和 AI Web 入口，Open WebUI 仅作为可替换过渡客户端。
 
 ## 当前状态
 
-截至 2026 年 7 月 17 日，主站、燕中 API、LiteLLM 与 Open WebUI 已打通：认证成员通过主站 OIDC 登录 Open WebUI，Open WebUI 使用燕中 API 的受限服务 Key，再由燕中 API 经 LiteLLM 调用获授权模型。开放注册与本地密码体系保持关闭，模型请求不再绕过统一额度与审计控制面。
+截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 的 PoC 已打通。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现。自主 AI Web 已实现登录、15 分钟逐用户应用 Key、模型白名单、会话预算、SSE 对话代理和最小对话界面；请求进入燕中 API 现有 `/v1` 扣费与用量日志链路。LiteLLM 现在以独立配置声明三个控制面路由名，供应商模型、地址和密钥仅从部署环境读取。真实 OpenAI/DeepSeek、失败退款和用户日志查询仍须在集成环境验收，不能把实现完成等同于生产验收完成。
 
-普通请求、SSE 流式输出、虚拟 Key 鉴权、模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已经验证。文本和图片能力目前仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
+普通请求、SSE 流式输出、LiteLLM 服务 Key 的模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已有 PoC 证据。燕中 API 用户虚拟 Key 的预算、模型权限与额度流水由控制面另行验收；Open WebUI 当前共享服务 Key 尚不能单独证明逐用户请求归因。文本和图片能力仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
+
+阶段 1 隔离 Docker 集成验收记录见 [阶段 1 集成验收记录](docs/phase-1-integration-acceptance.md)。本机测试上游只用于验证路由、额度和审计行为，不等同于真实 OpenAI/DeepSeek 供应商验收。
 
 ## 暑期预览目标
 
 - 认证在校生、校友与教师使用主站账号进入独立工作台，不维护共享管理员账号。
-- 网页工作台只通过燕中 API 的受限服务 Key 调用模型；LiteLLM 负责上游路由，不作为用户余额真值。
+- 自主网页工作台只通过燕中 API 按登录签发的短期应用 Key 调用模型；LiteLLM 负责上游路由，不作为用户余额真值。
 - 用户侧清晰展示可用模型、隐私边界与用量；公益额度、API Key 和逐请求账单由 `api_yanchuaner` 统一管理。
 - 完成文本与图片核心场景、移动端体验、失败提示、预算耗尽与恢复演练。
 - LiteLLM 管理界面不开放公网，只允许管理员通过本地隧道访问。
@@ -83,7 +85,7 @@ LiteLLM：上游路由 / 重试 / 成本核对
 
 ## 技术方向
 
-当前采用 LiteLLM 作为模型网关，本地验证版本为 `1.92.0`。Docker Compose 使用镜像摘要固定已验证构建，避免 `latest` 标签变化造成环境漂移。上层产品不依赖单一模型供应商。
+当前采用 LiteLLM 作为模型网关。固定镜像对应 `1.92.0` stable cut 的源码 revision `b3086ccd74553565c9a39716e72303ae985555f9`；Docker Compose 使用镜像摘要固定已验证构建，避免可变标签造成环境漂移。上层产品不依赖单一模型供应商。
 
 建议的应用组成：
 
@@ -97,11 +99,12 @@ LiteLLM：上游路由 / 重试 / 成本核对
 
 ## 本地开发环境
 
-当前最小环境由三个 Docker 容器组成：
+当前默认 PoC 仍由三个 Docker 容器组成；自主 AI Web 使用 `yancore` profile 独立验收：
 
 - `litellm`：接收统一格式的模型请求，执行鉴权、路由、预算和统计。
 - `db`：PostgreSQL 数据库，保存 LiteLLM 的配置、虚拟 Key 和用量数据。
 - `open-webui`：提供内部测试使用的聊天、会话和流式交互界面。
+- `ai-web`：燕中自主登录、主体会话、SSE 模型 BFF 与最小对话工作台，阶段 1 监听本机 3002。
 
 关键配置文件：
 
@@ -117,6 +120,16 @@ cd C:\Dev\yanchuaner\ai_yanchuaner
 docker compose pull
 docker compose up -d
 docker compose ps
+```
+
+独立启动自主 AI Web：
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm typecheck:ai-web
+pnpm test:ai-web
+pnpm build:ai-web
+docker compose --profile yancore up -d --build ai-web
 ```
 
 一键检查 Compose、容器和网关健康状态：
@@ -139,7 +152,7 @@ docker compose ps
 .\scripts\stream-test.ps1
 ```
 
-接入 `gpt-image-2` 时，使用安全提示输入官方或 OpenAI 兼容上游的 API Key。脚本会先验证上游鉴权，再把上游地址和凭据加密保存到 LiteLLM，并生成只允许图片模型、带预算和 RPM 限制的 Open WebUI 专用虚拟 Key。官方 OpenAI 可直接运行脚本；兼容中转站需要显式指定其 `/v1` 地址：
+接入 `gpt-image-2` 时，使用安全提示输入官方或 OpenAI 兼容上游的 API Key。脚本会先验证上游鉴权，再把上游地址和凭据加密保存到 LiteLLM，并生成只允许图片模型、带预算和 RPM 限制的历史直连 PoC Key。集成部署还必须在燕中 API 中配置对应内部渠道，并继续使用 `OPENWEBUI_API_KEY`；不得把该 PoC Key 直接交给 Open WebUI 绕过控制面。官方 OpenAI 可直接运行脚本；兼容中转站需要显式指定其 `/v1` 地址：
 
 ```powershell
 .\scripts\configure-gpt-image.ps1
@@ -164,14 +177,31 @@ docker compose logs -f litellm
 
 - 管理界面：`http://localhost:4000/ui`
 - 燕中 AI 测试界面：`http://localhost:3001`
+- 自主燕中 AI Web：`http://localhost:3002`（`yancore` profile）
 - 存活检查：`http://localhost:4000/health/liveliness`
 - OpenAI 兼容 API：`http://localhost:4000/v1`
 
-Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_LITELLM_KEY` 使用独立的受限虚拟 Key 连接 LiteLLM。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本使用，当前实例已关闭开放注册。
+Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_API_KEY` 使用燕中 API 签发的受限服务 Key。该 Key 仍只能形成服务账户归因；自主 `ai-web` 已改用逐登录短期 Key，两条路径不得混账。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本直连 LiteLLM，当前实例已关闭开放注册。
 
-全新实例默认禁止注册。首次初始化时，在本地 `.env` 中临时设置 `OPENWEBUI_ENABLE_SIGNUP=True` 并启动服务，创建首个管理员后，立即在 `管理员面板 → 设置 → 身份验证` 中关闭新用户注册，再将该变量改回 `False`。
+自主 `ai-web` 使用 `ai-web-yanchuaner` OIDC 客户端，不得复用 Open WebUI 的 `ai-yanchuaner` client ID 或 Secret。两者回调、撤销边界和下游账单主体不同。完成隔离环境准备后运行：
 
-重置唯一 Open WebUI 管理员时，运行以下脚本并按提示隐藏输入两次新密码。脚本会保留原账号数据，将登录邮箱统一为 `yanchuaner@yanchuaner.cn`：
+```powershell
+.\scripts\verify-ai-web-identity.ps1 -AllowLocalMutation
+```
+
+脚本验证 S256 PKCE、精确回调、YanCore 主体交换、API 用户复用、15 分钟模型/预算受限会话，以及浏览器响应不包含应用 Key 或 grant。它会写入短期授权与审计记录，只能连接可销毁的本地测试数据库。
+
+全新实例默认禁止本地登录、密码鉴权和注册，只允许主站 OIDC。Open WebUI 上游会把全新数据库中的首个 OAuth 用户提升为管理员，因此首次启动必须保持 `127.0.0.1` 监听且不开放反向代理，由受信任的主站管理员先完成一次 OIDC 登录；确认管理员身份后才能允许其他认证成员访问。不得通过临时开放本地注册完成初始化。
+
+在可整体销毁的 Open WebUI 独立数据卷中，可执行真实消费端验收：
+
+```powershell
+.\scripts\verify-openwebui-oidc-callback.ps1 -AllowLocalMutation
+```
+
+脚本只允许 localhost，验证管理员首次引导、校友重复登录复用、主站角色声明、本地登录/注册拒绝和运行时 OIDC 配置；不会输出授权码、Token 或密码。详细边界、验收证据与回滚见 [阶段 3C Open WebUI OIDC 验收](docs/phase-3-openwebui-oidc-acceptance.md)。
+
+`reset-openwebui-admin.ps1` 只保留为历史 PoC 数据恢复工具；默认部署已关闭密码鉴权，重置密码不会重新开放登录入口。管理员权限日常由主站 OIDC `role=admin` 管理。
 
 ```powershell
 .\scripts\reset-openwebui-admin.ps1
@@ -183,7 +213,7 @@ LiteLLM 管理界面使用独立账号，重置时运行以下脚本。脚本将
 .\scripts\reset-litellm-admin.ps1
 ```
 
-Open WebUI 会将外部连接配置保存到自己的数据库，保存后的后台配置优先于环境变量。轮换 `OPENWEBUI_LITELLM_KEY` 后，还需要在 `管理员面板 → 设置 → 外部连接` 中同步更新 API Key。
+Open WebUI 会将外部连接配置保存到自己的数据库，保存后的后台配置优先于环境变量。轮换 `OPENWEBUI_API_KEY` 后，还需要在 `管理员面板 → 设置 → 外部连接` 中同步更新 API Key。
 
 当前原型将知识库嵌入切换为远程 OpenAI 兼容模式，以避免首次启动下载体积较大的本地嵌入模型。聊天功能不受影响；文件检索和知识库功能需要在 LiteLLM 接入嵌入模型后再启用。
 
@@ -208,11 +238,17 @@ docker compose down
 - 生产与开发环境完全隔离，生产密钥只通过密钥管理或环境注入提供。
 - 仅使用来源明确、条款允许的模型服务，不建设账号池和规避上游限制的能力。
 
+## 版权与开源治理
+
+本仓库的自主内容尚未在运营主体、贡献协议和对外策略确定前授予公众许可；源代码公开可见不等于已经开源。第三方镜像及许可义务见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，依赖升级顺序见 [依赖与部署基线](docs/dependency-baseline.md)，文件级来源与替换路线见 [版权与来源矩阵](docs/copyright-matrix.md)，安全披露见 [SECURITY.md](SECURITY.md)。
+
+Open WebUI 继续作为明确标识的第三方客户端底座。当前 `WEBUI_NAME` 的品牌配置只可在其许可证允许的条件内运行：未取得书面或企业许可时，滚动 30 日内直接用户不得超过 50 人，并须保留法律声明页的 Open WebUI 许可与版权信息。
+
 ## 推进阶段
 
 ### 阶段 0：项目基线
 
-- 确定首版用户流程和接口边界
+- 确定首版用户流程和接口边界；详细决策与阻断条件见 [阶段 0 门禁](docs/phase-0-gate.md)
 - 建立开发、测试和生产环境约定
 - 建立基础代码、配置模板和自动检查
 
@@ -252,12 +288,11 @@ docker compose down
 - 核心接口具备自动化测试，部署和回滚步骤可重复执行。
 - 桌面端和移动端核心流程均可正常使用。
 
-## 项目结构（规划）
+## 项目结构
 
 ```text
 ai_yanchuaner/
-├─ apps/                 # 用户工作台与服务端应用
-├─ packages/             # 共享类型、客户端和业务组件
+├─ apps/ai-web/          # 自主 Next.js 工作台、OIDC、加密会话与 YanCore BFF
 ├─ gateway/              # LiteLLM 配置与扩展（已建立）
 ├─ deploy/               # 部署编排和运维配置
 ├─ docs/                 # 产品、架构、决策与生态文档
@@ -267,7 +302,7 @@ ai_yanchuaner/
 └─ README.md
 ```
 
-代码初始化后，以实际结构替换本节，不同时保留两套目录说明。
+阶段 1 模块设计、威胁边界、验收和回滚见 [自主 AI Web/BFF](docs/phase-1-ai-web-bff.md)。
 
 ## 协作约定
 

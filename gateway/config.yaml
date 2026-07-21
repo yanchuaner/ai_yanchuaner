@@ -1,4 +1,20 @@
-model_list: []
+model_list:
+  # LiteLLM 的公开模型名是控制面使用的路由名；真实供应商模型与地址只从部署环境读取。
+  - model_name: deepseek/deepseek-v4-flash
+    litellm_params:
+      model: openai/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: os.environ/DEEPSEEK_API_BASE_URL
+  - model_name: deepseek/deepseek-v4-pro
+    litellm_params:
+      model: openai/deepseek-reasoner
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: os.environ/DEEPSEEK_API_BASE_URL
+  - model_name: gpt-image-2
+    litellm_params:
+      model: openai/gpt-image-2
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: os.environ/OPENAI_API_BASE_URL
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
