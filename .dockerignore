@@ -1,0 +1,12 @@
+.git
+.codex-worktrees
+.env
+.env.*
+!.env.example
+node_modules
+**/node_modules
+**/.next
+backups
+logs
+*.db
+*.sqlite

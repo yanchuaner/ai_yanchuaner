@@ -69,9 +69,29 @@ if (-not $openWebUiHealthy) {
     throw "Open WebUI 未在 120 秒内恢复健康。请执行 docker compose logs open-webui。"
 }
 
+$openWebUiConfig = Invoke-RestMethod -Uri "http://$openWebUiAddress/api/config" -TimeoutSec 10
+if ($openWebUiConfig.features.enable_signup -ne $false) {
+    throw "Open WebUI 运行时仍允许本地注册。"
+}
+if ($openWebUiConfig.features.enable_login_form -ne $false) {
+    throw "Open WebUI 运行时仍显示本地登录表单。"
+}
+if (-not ($openWebUiConfig.oauth.providers.PSObject.Properties.Name -contains "oidc")) {
+    throw "Open WebUI 运行时未加载主站 OIDC provider。"
+}
+$passwordLogin = Invoke-WebRequest -UseBasicParsing -Method Post `
+    -Uri "http://$openWebUiAddress/api/v1/auths/signin" `
+    -ContentType "application/json" `
+    -Body '{"email":"local-auth-check@example.test","password":"not-a-password"}' `
+    -SkipHttpErrorCheck -TimeoutSec 10
+if ($passwordLogin.StatusCode -ne 403) {
+    throw "Open WebUI 本地密码鉴权未在服务端关闭。"
+}
+
 Write-Output "Docker Compose 配置：有效"
 Write-Output "PostgreSQL 服务：运行中"
 Write-Output "LiteLLM 服务：运行中且健康"
 Write-Output "Open WebUI 服务：运行中且健康"
+Write-Output "Open WebUI 身份边界：仅主站 OIDC，本地密码与注册已关闭"
 Write-Output "LiteLLM 管理界面：http://localhost:4000/ui"
 Write-Output "燕中 AI 测试界面：http://$openWebUiAddress"
