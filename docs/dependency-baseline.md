@@ -38,6 +38,7 @@ pnpm 安装脚本仅批准 `esbuild` 与 `sharp`，`allowBuilds` 之外的依赖
 - `docker compose config --quiet`、健康检查、文本/图片冒烟、重启恢复和备份恢复；
 - Open WebUI 持久化配置覆盖环境变量的检查；
 - Open WebUI `enable_signup=false`、`enable_login_form=false`、密码接口 403、OIDC 角色白名单和受控首次管理员引导；
+- Open WebUI 与自主 AI Web 的 client ID、Secret、精确回调互相隔离，YanCore 主体交换再使用独立 Secret；
 - 回滚 digest、数据库兼容性和不可逆迁移说明。
 
 在 Open WebUI 用户级身份归因完成前，共享服务 Key 只记入独立服务账户，不得据此扣减个人权益。在取得书面或企业品牌许可前，还必须保持滚动 30 日直接用户不超过 50 人。

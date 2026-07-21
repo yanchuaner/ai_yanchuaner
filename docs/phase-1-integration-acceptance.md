@@ -4,7 +4,7 @@
 环境：Windows Docker Desktop，Docker 29.6.1，Docker Compose 5.2.0
 范围：隔离功能分支工作树与全新 PostgreSQL 卷；不包含生产数据、真实供应商密钥或真实用户。
 
-> 后续状态：2026-07-21 已在本地 WSL/Docker 隔离环境完成主站提供方合同、New API 消费端和 Open WebUI 消费端真实回调。本文保留阶段 1 当时证据；Open WebUI 当前结果见 `docs/phase-3-openwebui-oidc-acceptance.md`。
+> 后续状态：2026-07-21 已在本地 WSL/Docker 隔离环境完成主站提供方合同，以及 New API、Open WebUI、自主 AI Web 三条消费端真实回调。本文保留阶段 1 当时证据；当前结果见 `docs/phase-3-openwebui-oidc-acceptance.md` 与 `docs/phase-3-ai-web-identity-acceptance.md`。
 
 ## 已通过
 

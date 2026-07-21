@@ -183,6 +183,14 @@ docker compose logs -f litellm
 
 Open WebUI 当前只监听本机地址，并通过 `OPENWEBUI_API_KEY` 使用燕中 API 签发的受限服务 Key。该 Key 仍只能形成服务账户归因；自主 `ai-web` 已改用逐登录短期 Key，两条路径不得混账。`LITELLM_TEST_KEY` 只供 PowerShell 测试脚本直连 LiteLLM，当前实例已关闭开放注册。
 
+自主 `ai-web` 使用 `ai-web-yanchuaner` OIDC 客户端，不得复用 Open WebUI 的 `ai-yanchuaner` client ID 或 Secret。两者回调、撤销边界和下游账单主体不同。完成隔离环境准备后运行：
+
+```powershell
+.\scripts\verify-ai-web-identity.ps1 -AllowLocalMutation
+```
+
+脚本验证 S256 PKCE、精确回调、YanCore 主体交换、API 用户复用、15 分钟模型/预算受限会话，以及浏览器响应不包含应用 Key 或 grant。它会写入短期授权与审计记录，只能连接可销毁的本地测试数据库。
+
 全新实例默认禁止本地登录、密码鉴权和注册，只允许主站 OIDC。Open WebUI 上游会把全新数据库中的首个 OAuth 用户提升为管理员，因此首次启动必须保持 `127.0.0.1` 监听且不开放反向代理，由受信任的主站管理员先完成一次 OIDC 登录；确认管理员身份后才能允许其他认证成员访问。不得通过临时开放本地注册完成初始化。
 
 在可整体销毁的 Open WebUI 独立数据卷中，可执行真实消费端验收：

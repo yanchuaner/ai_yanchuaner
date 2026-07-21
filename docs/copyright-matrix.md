@@ -35,7 +35,7 @@
 | `deploy/nginx/**` | 燕中部署边界与反向代理配置 | 自主内容暂未授予公众许可 |
 | `README.md`、`docs/**`、治理文件 | 燕中产品、架构、验收、来源和安全文档 | 自主内容暂未授予公众许可 |
 | `docs/yancore-subject-grant-client.md` | 燕中主体委托客户端契约，未复制 Open WebUI/New API 实现 | 自主内容暂未授予公众许可 |
-| `apps/ai-web/src/**`、`apps/ai-web/Dockerfile` | 独立需求、OIDC/BFF 设计、YanCore 客户端、加密会话、SSE 代理、燕中对话界面和自动化测试 | 自主内容暂未授予公众许可 |
+| `apps/ai-web/src/**`、`apps/ai-web/Dockerfile` | 独立需求、隔离 OIDC/BFF 设计、YanCore 客户端、加密会话、SSE 代理、容器安全边界、燕中对话界面和真实回调自动化 | 自主内容暂未授予公众许可 |
 | 根 `package.json`、`pnpm-workspace.yaml` | 燕中自主应用工作区与依赖脚本白名单 | 自主内容暂未授予公众许可 |
 
 “已自主实现”只表示当前 Git 历史与文件内容未显示复制第三方实现，不自动决定权利人、贡献转让或最终开源许可证。

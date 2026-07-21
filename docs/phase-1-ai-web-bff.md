@@ -7,6 +7,8 @@
 
 `apps/ai-web` 是燕中自主设计和实现的产品入口，不复制 Open WebUI 的页面、会话或后端。当前增量完成主站 OIDC 登录、YanCore 主体交换、短期应用 Key、加密会话、模型白名单和 SSE 对话代理；兼容网关继续承担路由、额度结算和用量日志。
 
+自主入口固定使用 `ai-web-yanchuaner` OIDC client；Open WebUI 保留 `ai-yanchuaner`。两个客户端的 ID、Secret 和精确回调必须隔离，自主入口的 OIDC Secret 也不得复用 YanCore 主体交换 Secret。
+
 ## 数据流
 
 ```text
