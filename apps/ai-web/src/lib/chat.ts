@@ -60,7 +60,7 @@ export async function forwardChatCompletion(
     "Content-Type": contentType || "application/json",
     "X-Content-Type-Options": "nosniff",
   });
-  const requestId = upstream.headers.get("x-request-id");
+  const requestId = upstream.headers.get("x-request-id") || upstream.headers.get("x-oneapi-request-id");
   if (requestId) headers.set("X-Request-ID", requestId);
   return new Response(upstream.body, { status: upstream.status, headers });
 }
