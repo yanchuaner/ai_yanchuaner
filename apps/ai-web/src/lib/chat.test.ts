@@ -20,7 +20,7 @@ test("chat forwarding keeps the application key server-side and preserves SSE", 
     seenBody = String(init?.body);
     return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n', {
       status: 200,
-      headers: { "Content-Type": "text/event-stream", "X-Request-ID": "req-1" },
+      headers: { "Content-Type": "text/event-stream", "X-Oneapi-Request-Id": "req-1" },
     });
   };
   const response = await forwardChatCompletion(

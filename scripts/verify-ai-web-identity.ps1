@@ -4,6 +4,10 @@ param(
   [string]$ClientId = "ai-web-yanchuaner",
   [string]$AlumniUsername = "acceptance-alumni",
   [string]$AcceptancePassword = "AcceptancePass!2026",
+  [string]$Model = "deepseek-chat",
+  [string]$ExpectedContent = "Yanchuaner autonomous AI model path passed.",
+  [string]$ControlDbContainer = "yanchuaner-phase1-api-control-db-1",
+  [switch]$VerifyModelPath,
   [switch]$AllowLocalMutation
 )
 
@@ -128,7 +132,7 @@ function Invoke-AiWebLogin {
   if ($sessionResult.Status -ne 200 -or $sessionResult.Data.authenticated -ne $true) {
     throw "AI Web did not expose an authenticated session summary."
   }
-  return [pscustomobject]@{ Data = $sessionResult.Data; Raw = $sessionResult.Content }
+  return [pscustomobject]@{ Data = $sessionResult.Data; Raw = $sessionResult.Content; WebSession = $session }
 }
 
 if (-not $AllowLocalMutation) {
@@ -172,4 +176,93 @@ if ($first.Raw -match "sk-yc_" -or $first.Raw -match '"grant"') {
   throw "AI Web session response exposed an application key or subject grant."
 }
 
-Write-Output "Autonomous AI Web identity acceptance passed: isolated OIDC client, PKCE callback, YanCore subject reuse, bounded application session, and browser-secret isolation all passed."
+if ($VerifyModelPath) {
+  $active = $second
+  if ($ControlDbContainer -notmatch '^yanchuaner-[a-z0-9-]+-control-db-1$') {
+    throw "ControlDbContainer must name an isolated local Yanchuaner control database container."
+  }
+  if (-not ($active.Data.models -contains $Model)) {
+    throw "The requested acceptance model is outside the application session policy."
+  }
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw "Docker is required to verify the local immutable ledger and usage record."
+  }
+  $chatBody = @{ model = $Model; messages = @(@{ role = "user"; content = "Return the deterministic acceptance response." }) } | ConvertTo-Json -Depth 8 -Compress
+  $staleChat = Invoke-WebRequest -Method Post -Uri "$AiWebBaseUrl/api/chat/completions" `
+    -WebSession $first.WebSession -ContentType "application/json" -SkipHttpErrorCheck -TimeoutSec 30 `
+    -Headers @{ Origin = $AiWebBaseUrl; Accept = "text/event-stream" } -Body $chatBody
+  if ($staleChat.StatusCode -ne 401) {
+    throw "The previous AI Web application key remained usable after session rotation."
+  }
+  $chat = Invoke-WebRequest -Method Post -Uri "$AiWebBaseUrl/api/chat/completions" `
+    -WebSession $active.WebSession -ContentType "application/json" -SkipHttpErrorCheck -TimeoutSec 120 `
+    -Headers @{ Origin = $AiWebBaseUrl; Accept = "text/event-stream" } `
+    -Body $chatBody
+  if ($chat.StatusCode -ne 200 -or -not ([string]$chat.Headers["Content-Type"]).StartsWith("text/event-stream")) {
+    throw "Autonomous AI Web did not return a successful SSE model response."
+  }
+  if ($chat.Content -notmatch [regex]::Escape($ExpectedContent) -or $chat.Content -notmatch 'data: \[DONE\]') {
+    throw "The deterministic SSE response was incomplete."
+  }
+  if ($chat.Content -match 'sk-[A-Za-z0-9_-]{12,}' -or $chat.Content -match '"grant"') {
+    throw "The model response exposed an application key or subject grant."
+  }
+  $requestId = ([string]$chat.Headers["X-Request-ID"]).Trim()
+  if ($requestId -notmatch '^[A-Za-z0-9._:-]{8,128}$') {
+    throw "The model response did not expose a safe request ID for ledger correlation."
+  }
+  $sql = @"
+SELECT json_build_object(
+  'log_user_id', l.user_id,
+  'token_user_id', t.user_id,
+  'token_name', t.name,
+  'key_hash_enabled', t.key_hash_enabled,
+  'model_name', l.model_name,
+  'log_quota', l.quota,
+  'token_used_quota', t.used_quota,
+  'ledger_count', (SELECT COUNT(*) FROM quota_ledger_entries q WHERE q.request_id = l.request_id),
+  'ledger_amount', (SELECT COALESCE(SUM(q.amount), 0) FROM quota_ledger_entries q WHERE q.request_id = l.request_id),
+  'public_benefit_settlements', (SELECT COUNT(*) FROM quota_ledger_entries q WHERE q.request_id = l.request_id AND q.entry_type = 'settlement' AND q.funding_source = 'public_benefit')
+)::text
+FROM logs l
+JOIN tokens t ON t.id = l.token_id
+WHERE l.request_id = '$requestId' AND l.model_name <> ''
+ORDER BY l.id DESC
+LIMIT 1;
+"@
+  $evidence = $null
+  for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    $databaseEvidence = & docker exec $ControlDbContainer psql -U new_api -d new_api -Atc $sql
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($databaseEvidence)) {
+      throw "No correlated local usage and ledger evidence was found."
+    }
+    $evidence = $databaseEvidence | ConvertFrom-Json
+    if ([int64]$evidence.token_used_quota -ge [int64]$evidence.log_quota) { break }
+    Start-Sleep -Milliseconds 200
+  }
+  $activeUserId = [int64]$active.Data.subject.userId
+  $logUserId = [int64]$evidence.log_user_id
+  $tokenUserId = [int64]$evidence.token_user_id
+  $logQuota = [int64]$evidence.log_quota
+  $tokenUsedQuota = [int64]$evidence.token_used_quota
+  $ledgerCount = [int64]$evidence.ledger_count
+  $ledgerAmount = [int64]$evidence.ledger_amount
+  $publicBenefitSettlements = [int64]$evidence.public_benefit_settlements
+  $failedEvidence = @()
+  if ($logUserId -ne $activeUserId) { $failedEvidence += "log user" }
+  if ($tokenUserId -ne $activeUserId) { $failedEvidence += "token user" }
+  if (-not ([string]$evidence.token_name).StartsWith("yancore:ai-web:session:")) { $failedEvidence += "token name" }
+  if ([bool]$evidence.key_hash_enabled -ne $true) { $failedEvidence += "key hash" }
+  if ($evidence.model_name -ne $Model) { $failedEvidence += "model" }
+  if ($logQuota -le 0) { $failedEvidence += "log quota" }
+  if ($tokenUsedQuota -lt $logQuota) { $failedEvidence += "token quota ($tokenUsedQuota < $logQuota)" }
+  if ($ledgerCount -lt 1) { $failedEvidence += "ledger count" }
+  if ($publicBenefitSettlements -ne 1) { $failedEvidence += "settlement count" }
+  if ($ledgerAmount -ne (-1 * $logQuota)) { $failedEvidence += "ledger amount" }
+  if ($failedEvidence.Count -gt 0) {
+    throw "The usage and ledger evidence is inconsistent: $($failedEvidence -join ', ')."
+  }
+  Write-Output "Autonomous AI Web model-path acceptance passed: previous-key revocation, SSE response, request ID, user attribution, hashed application key, usage log, and immutable public-benefit settlement all passed."
+} else {
+  Write-Output "Autonomous AI Web identity acceptance passed: isolated OIDC client, PKCE callback, YanCore subject reuse, bounded application session, and browser-secret isolation all passed."
+}

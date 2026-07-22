@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev:ai-web": "pnpm --filter @yanchuaner/ai-web dev",
+    "dev:fixture": "node scripts/local-openai-fixture.mjs",
     "build:ai-web": "pnpm --filter @yanchuaner/ai-web build",
     "test:ai-web": "pnpm --filter @yanchuaner/ai-web test",
     "typecheck:ai-web": "pnpm --filter @yanchuaner/ai-web typecheck"
