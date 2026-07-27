@@ -33,7 +33,7 @@ ssh -L 4000:127.0.0.1:4000 <服务器用户>@<服务器地址>
 
 ## 2. 资源基线
 
-当前三个 AI 容器稳定空闲时合计约占 `0.9 GiB` 内存，冷启动阶段可能接近 `1.8 GiB`。网站与 AI 同机部署的推荐配置是 `2 vCPU / 4 GiB RAM / 40 GiB 可用磁盘`。
+2026-07-27 生产实测中，PostgreSQL、LiteLLM 与 Open WebUI 稳定后合计约占 `1.2 GiB` 内存，整机连同主站、燕中 API 和缓存约使用 `2.1 GiB`。Open WebUI 冷启动时会产生短时峰值，当前 `4 GiB swap` 已有约 `1.5 GiB` 在用。网站与 AI 同机部署的生产基线是 `2 vCPU / 4 GiB RAM / 40 GiB 系统盘 / 4 GiB swap`；服务器只运行固定镜像，不执行前端或 Docker 构建。
 
 `1 vCPU / 2 GiB RAM` 只适合注册关闭、图片并发为 1、少量管理员使用的过渡环境，并且必须：
 
@@ -88,6 +88,14 @@ Open WebUI 当前共享服务 Key 只能记入独立服务账户，不能证明�
 
 ## 4. 成本和访问策略
 
+### 4.1 当前身份与计费边界
+
+Open WebUI 已关闭登录表单、密码鉴权和本地注册，只允许成员通过主站 OIDC 登录，各成员拥有独立账号和会话。主站 `role=admin` 映射为管理员，`alumni`、`student`、`teacher` 映射为普通用户；其他角色不得进入。
+
+Open WebUI 调用燕中 API 时仍使用独立的共享服务 Key，因此用户登录身份可以区分，但模型请求在 API 控制面暂时只归属于服务账户，不得据此扣减个人公益额度。自主 `ai-web` 使用逐登录短期 Key，能够形成个人调用归因；两条链路的额度和审计记录不得混用。
+
+暑期预览只面向少量已认证成员，不开放匿名访问和公开注册。扩大范围前必须完成真实成员重复登录、角色同步、会话撤销和用户级账单验收。
+
 LiteLLM 以美元累计成本。DeepSeek 上游的人民币报价按固定汇率 `1 USD = 7.0 CNY` 保守换算，只用于预算保护，不作为财务结算依据。
 
 | 模型 | 输入未命中 | 输入缓存命中 | 输出/图片 |
@@ -96,7 +104,7 @@ LiteLLM 以美元累计成本。DeepSeek 上游的人民币报价按固定汇率
 | `deepseek-v4-pro` | 3 元/百万 token | 0.025 元/百万 token | 6 元/百万 token |
 | `gpt-image-2` | - | - | 0.1 美元/张 |
 
-运行 `scripts/harden-summer-runtime.ps1` 后：
+运行 `scripts/harden-summer-runtime.ps1` 后，以下额度是 LiteLLM 历史 PoC Key 的服务级总额，不是个人额度，也不能替代燕中 API 的预算与账本：
 
 - 文本 Key：`3 USD / 30d`，RPM 20，TPM 20000。
 - 图片 Key：`3 USD / 30d`，约 30 张图，RPM 2，并发 1。
@@ -186,11 +194,14 @@ tail -n 50 /var/log/ai-yanchuaner-backup.log
 
 同时确认：
 
-- 网站与 AI 的 HTTPS 证书有效。
-- 文本、图片 Key 到期时间覆盖暑期结束。
-- 两个 Key 的月度预算均为 3 美元且支出没有异常。
+- 主站、燕中 API 与 AI 的 HTTPS 证书有效。
+- Open WebUI 仍只提供主站 OIDC 登录，本地登录、密码鉴权和注册保持关闭。
+- Open WebUI 服务 Key、模型白名单和总预算有效，且没有异常支出。
+- 自主 `ai-web` 的短期 Key、逐用户预算和审计链路没有跨用户复用。
 - 上游账号余额充足，图片仍按 0.1 美元/次计费。
 - 最近一次备份校验通过，服务器外副本可访问。
+
+当前生产环境由 `/etc/cron.d/yanchuaner-backups` 统一调度：主站每日 `02:15` 备份，AI 每周日 `04:00` 备份，两项任务均使用 `flock` 防止并发。AI 备份会短暂停止并重启 Open WebUI，健康检查包含有限冷启动重试；备份根目录及时间戳目录权限均为 `700`。
 
 ## 9. 已知边界
 
@@ -198,3 +209,5 @@ tail -n 50 /var/log/ai-yanchuaner-backup.log
 - `1 vCPU / 2 GiB` 没有多人并发余量，swap 只能避免瞬时 OOM，不能提升性能。
 - 暑期冻结期间不升级 LiteLLM、Open WebUI、PostgreSQL 主版本，不接入 Agent、BYOK 或开放注册。
 - 上游价格变化后必须同步成本配置，否则 LiteLLM 的美元预算不再准确。
+- 生产服务器使用本地固定标签的 `docker-compose.override.yml` 适配离线导入镜像；该文件只属于服务器，不提交仓库。升级镜像前必须同时核对仓库摘要与服务器标签。
+- AI 证书当前有效至 2026-10-13，Certbot 定时续期已启用；到期前必须完成一次续期演练。不要为了自动化把 DNS API 凭据随意留在服务器。
