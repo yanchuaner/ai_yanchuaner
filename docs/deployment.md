@@ -82,7 +82,7 @@ docker compose up -d
 8. 将 `deploy/nginx/ai.yanchuaner.cn.conf` 中的示例域名替换为真实 AI 域名，签发 HTTPS 证书。
 9. 网站生产环境设置 `AI_WORKSPACE_URL=https://ai.example.com`。
 
-LiteLLM 和 Open WebUI 的数据库配置具有持久化优先级。轮换 `OPENWEBUI_API_KEY` 后，必须同时更新 `.env` 和 Open WebUI 管理面板中的对应连接。
+LiteLLM 和 Open WebUI 的数据库配置具有持久化优先级。轮换 `OPENWEBUI_API_KEY` 后，必须同时更新 `.env` 和 Open WebUI 管理面板中的对应连接。OAuth-only 入口也必须同时核对 Open WebUI `config` 表中的 `ui.enable_login_form=false` 与 `oauth.auto_redirect=true`；历史持久化值会覆盖 Compose 环境变量，不能只凭容器环境判定入口已关闭。
 
 Open WebUI 当前共享服务 Key 只能记入独立服务账户，不能证明个人调用归属，不得据此静默扣减个人公益额度。发布逐用户计费前，必须验收用户级令牌交换或可信身份透传。未取得 Open WebUI 书面或企业许可时，还必须监控并限制滚动 30 日直接用户不超过 50 人。
 
