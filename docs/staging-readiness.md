@@ -30,6 +30,6 @@ pwsh ./scripts/check-staging-readiness.ps1 -EnvFile ./.env -SkipComposeConfig
 
 ## 当前预览状态
 
-截至 2026-07-27，`staging.yanchuaner.cn`、`api.yanchuaner.cn` 与 `ai.yanchuaner.cn` 的 DNS 和 HTTPS 已启用，Open WebUI 使用独立 OIDC 客户端跳转到主站，燕中 API 可通过受限服务 Key 完成真实 DeepSeek 文本请求。公开预览当前只部署 Open WebUI 过渡客户端；自主 `ai-web` profile 仍在隔离环境验收。
+截至 2026-07-27，`staging.yanchuaner.cn`、`api.yanchuaner.cn` 与 `ai.yanchuaner.cn` 的 DNS 和 HTTPS 已启用，Open WebUI 使用独立 OIDC 客户端跳转到主站，燕中 API 可通过受限服务 Key 完成真实 DeepSeek 文本请求。主站管理员已通过公开 HTTPS 回调复用原 Open WebUI 管理员记录；本地登录表单关闭、OAuth 自动跳转开启、密码接口返回 403。公开预览当前只部署 Open WebUI 过渡客户端；自主 `ai-web` profile 仍在隔离环境验收。
 
-以下项目仍不得标记为完成：隔离成员账号的授权回调、重复登录和角色同步，Open WebUI 逐用户请求归因，预算耗尽、失败退款、TPM 超限，以及跨供应商故障切换。
+以下项目仍不得标记为完成：普通成员的首次/重复登录、角色变化和主站停用同步，Open WebUI 逐用户请求归因，预算耗尽、失败退款、TPM 超限，以及跨供应商故障切换。管理员回调通过不能替代这些成员与计费门禁。
