@@ -6,9 +6,9 @@
 
 ## 当前状态
 
-截至 2026 年 7 月 19 日，主站、燕中 API、LiteLLM 与 Open WebUI 的 PoC 已打通。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现。自主 AI Web 已实现登录、15 分钟逐用户应用 Key、模型白名单、会话预算、SSE 对话代理和最小对话界面；请求进入燕中 API 现有 `/v1` 扣费与用量日志链路。LiteLLM 现在以独立配置声明三个控制面路由名，供应商模型、地址和密钥仅从部署环境读取。真实 OpenAI/DeepSeek、失败退款和用户日志查询仍须在集成环境验收，不能把实现完成等同于生产验收完成。
+截至 2026 年 7 月 27 日，HTTPS staging 主站、燕中 API、LiteLLM 与 Open WebUI 已部署并保持健康。主站 discovery/JWKS、Open WebUI OIDC 登录重定向、API 服务 Key 模型列表和一次真实 DeepSeek 文本请求已通过；真实成员授权回调、重复登录、角色同步、失败退款和用户日志查询仍须使用隔离账号验收。阶段 1 另已建立自主 `apps/ai-web`：使用主站 OIDC、加密 HttpOnly 会话和 YanCore 主体交换，不依赖 Open WebUI 的页面或会话实现；该 profile 尚未部署到公开预览环境。
 
-普通请求、SSE 流式输出、LiteLLM 服务 Key 的模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已有 PoC 证据。燕中 API 用户虚拟 Key 的预算、模型权限与额度流水由控制面另行验收；Open WebUI 当前共享服务 Key 尚不能单独证明逐用户请求归因。文本和图片能力仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。详细记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
+普通请求、SSE 流式输出、服务 Key 的模型权限、预算、RPM 限流、图片生成、备份恢复、HTTPS 和重启恢复已有证据。Open WebUI 的 OIDC 用户相互独立，但其共享服务 Key 仍不能单独证明逐用户模型请求归因；燕中 API 用户虚拟 Key 的预算、模型权限与额度流水由控制面另行验收。文本和图片能力仍需补充同能力第二渠道、跨供应商故障切换、预算耗尽与 TPM 超限演练。历史直连记录见 [LiteLLM 与 Open WebUI PoC 验收记录](docs/litellm-openwebui-poc.md)。
 
 阶段 1 隔离 Docker 集成验收记录见 [阶段 1 集成验收记录](docs/phase-1-integration-acceptance.md)。本机测试上游只用于验证路由、额度和审计行为，不等同于真实 OpenAI/DeepSeek 供应商验收。
 
@@ -115,8 +115,8 @@ LiteLLM：上游路由 / 重试 / 成本核对
 
 启动环境：
 
-```powershell
-cd C:\Dev\yanchuaner\ai_yanchuaner
+```bash
+cd /home/codeq/code/personal/yanchuaner/ai_yanchuaner
 docker compose pull
 docker compose up -d
 docker compose ps
@@ -124,7 +124,7 @@ docker compose ps
 
 独立启动自主 AI Web：
 
-```powershell
+```bash
 pnpm install --frozen-lockfile
 pnpm typecheck:ai-web
 pnpm test:ai-web
@@ -134,8 +134,8 @@ docker compose --profile yancore up -d --build ai-web
 
 一键检查 Compose、容器和网关健康状态：
 
-```powershell
-.\scripts\check-environment.ps1
+```bash
+pwsh ./scripts/check-environment.ps1
 ```
 
 完成模型和测试虚拟 Key 配置后，运行冒烟测试验证完整调用链路：
