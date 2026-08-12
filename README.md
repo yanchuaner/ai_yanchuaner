@@ -240,7 +240,7 @@ docker compose down
 
 ## 版权与开源治理
 
-本仓库的自主内容尚未在运营主体、贡献协议和对外策略确定前授予公众许可；源代码公开可见不等于已经开源。第三方镜像及许可义务见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，依赖升级顺序见 [依赖与部署基线](docs/dependency-baseline.md)，文件级来源与替换路线见 [版权与来源矩阵](docs/copyright-matrix.md)，安全披露见 [SECURITY.md](SECURITY.md)。
+本仓库的自主内容采用 [AGPL-3.0](./LICENSE)；第三方镜像与依赖继续适用各自许可证。第三方镜像及许可义务见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，依赖升级顺序见 [依赖与部署基线](docs/dependency-baseline.md)，文件级来源与替换路线见 [版权与来源矩阵](docs/copyright-matrix.md)，安全披露见 [SECURITY.md](SECURITY.md)。
 
 Open WebUI 继续作为明确标识的第三方客户端底座。当前 `WEBUI_NAME` 的品牌配置只可在其许可证允许的条件内运行：未取得书面或企业许可时，滚动 30 日内直接用户不得超过 50 人，并须保留法律声明页的 Open WebUI 许可与版权信息。
 
