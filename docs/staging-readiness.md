@@ -30,6 +30,6 @@ pwsh ./scripts/check-staging-readiness.ps1 -EnvFile ./.env -SkipComposeConfig
 
 ## 当前预览状态
 
-截至 2026-08-01，`yanchuaner.cn` 是唯一身份提供方，`api.yanchuaner.cn` 与 `ai.yanchuaner.cn` 均已改用主域；`staging.yanchuaner.cn` 的 OAuth/OIDC 签发已关闭。Open WebUI 使用独立 OIDC 客户端，主站管理员已通过全新浏览器上下文复用原管理员记录；本地登录表单关闭、OAuth 自动跳转开启、密码接口返回 403。燕中 API 的受限服务 Key 已完成真实 DeepSeek 文本请求，公开预览当前仍只部署 Open WebUI 过渡客户端；自主 `ai-web` profile 继续在隔离环境验收。
+截至 2026-08-12，`yanchuaner.cn` 是唯一身份提供方，`api.yanchuaner.cn` 与 `ai.yanchuaner.cn` 均已改用主域；`staging.yanchuaner.cn` 的 OAuth/OIDC 签发已关闭。自主 ai-web 已上线 `ai.yanchuaner.cn`，通过主站 OIDC、YanCore 主体交换和 DeepSeek 真实对话完成验收；Open WebUI 保留在 `127.0.0.1:3001` 仅作过渡/内网管理。
 
-项目负责人已确认普通成员主域登录通过。主站账号停用/角色变化已接入签名身份事件同步：API 收到事件后幂等撤销存量 grant 与 Token（本地隔离环境已验证，2026-08-12 已随主站、API 发布到生产），自主 AI Web 在上游返回 401/403 时立即清除会话（单测覆盖，尚未上线）。以下项目仍不得标记为完成：自主 ai-web 生产部署，Open WebUI 逐用户请求归因，预算耗尽、失败退款、TPM 超限，以及跨供应商故障切换。管理员与普通成员回调通过不能替代这些计费和撤销门禁。
+项目负责人已确认普通成员主域登录通过。主站账号停用/角色变化已接入签名身份事件同步：API 收到事件后幂等撤销存量 grant 与 Token（本地隔离环境已验证，2026-08-12 已随主站、API 发布到生产），自主 ai-web 在上游返回 401/403 时立即清除会话。以下项目仍不得标记为完成：Open WebUI 逐用户请求归因（已转内网），预算耗尽、失败退款、TPM 超限，以及跨供应商故障切换。管理员与普通成员回调通过不能替代这些计费和撤销门禁。
