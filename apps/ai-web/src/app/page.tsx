@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Download, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, Sparkles, Square, Trash2, User, X } from "lucide-react";
+import { Bot, Coins, Download, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, Sparkles, Square, Trash2, User, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 type SessionState =
@@ -58,6 +58,10 @@ export default function HomePage() {
 	const [ledgerVisible, setLedgerVisible] = useState(false);
 	const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
 	const [ledgerTotal, setLedgerTotal] = useState(0);
+	const [quotaVisible, setQuotaVisible] = useState(false);
+	const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
+	const [quotaResult, setQuotaResult] = useState("");
+	const [quotaError, setQuotaError] = useState("");
 	const abortRef = useRef<AbortController | null>(null);
 
 	async function loadBalance() {
@@ -119,6 +123,31 @@ export default function HomePage() {
 		} else {
 			setLedgerVisible(false);
 		}
+	}
+
+	async function submitQuota(event: FormEvent) {
+		event.preventDefault();
+		setQuotaResult("");
+		setQuotaError("");
+		const response = await fetch("/api/admin/quota", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				userId: Number(quotaForm.userId),
+				action: quotaForm.action,
+				amount: Number(quotaForm.amount),
+				reason: quotaForm.reason,
+				reference: quotaForm.reference,
+			}),
+		});
+		const body = await response.json().catch(() => null);
+		if (!response.ok || !body?.balanceAfter) {
+			setQuotaError(body?.error || "额度发放失败。");
+			return;
+		}
+		setQuotaResult(`发放成功，最新余额 ${body.balanceAfter}`);
+		setQuotaForm((current) => ({ ...current, userId: "", amount: "", reference: "" }));
+		void loadBalance();
 	}
 
 	async function openConversation(id: string) {
@@ -368,6 +397,11 @@ export default function HomePage() {
 					</label>
 				</div>
 				<div className="toolbar-actions">
+					{session.identity.role === "admin" && (
+						<button className="icon-action" type="button" onClick={() => setQuotaVisible(!quotaVisible)} title="额度发放" aria-label="额度发放">
+							<Coins size={17} aria-hidden="true" />
+						</button>
+					)}
 					<button className="icon-action" type="button" onClick={toggleLedger} title="额度流水" aria-label="额度流水">
 						<ReceiptText size={17} aria-hidden="true" />
 					</button>
@@ -385,6 +419,45 @@ export default function HomePage() {
 					</button>
 				</div>
 			</div>
+
+			{quotaVisible && session.identity.role === "admin" && (
+				<div className="quota-panel" aria-live="polite">
+					<div className="ledger-head">
+						<strong>公益额度发放</strong>
+						<button className="icon-action" type="button" onClick={() => setQuotaVisible(false)} aria-label="关闭额度发放">
+							<X size={16} aria-hidden="true" />
+						</button>
+					</div>
+					<form className="quota-form" onSubmit={submitQuota}>
+						<label>
+							<span>目标用户 ID</span>
+							<input type="number" min="1" value={quotaForm.userId} onChange={(event) => setQuotaForm({ ...quotaForm, userId: event.target.value })} required />
+						</label>
+						<label>
+							<span>操作</span>
+							<select value={quotaForm.action} onChange={(event) => setQuotaForm({ ...quotaForm, action: event.target.value })}>
+								<option value="grant">发放（只允许正数）</option>
+								<option value="adjust">调整（可回退）</option>
+							</select>
+						</label>
+						<label>
+							<span>金额（额度单位）</span>
+							<input type="number" value={quotaForm.amount} onChange={(event) => setQuotaForm({ ...quotaForm, amount: event.target.value })} required />
+						</label>
+						<label>
+							<span>原因</span>
+							<input type="text" maxLength={200} value={quotaForm.reason} onChange={(event) => setQuotaForm({ ...quotaForm, reason: event.target.value })} required />
+						</label>
+						<label>
+							<span>线下收款凭证</span>
+							<input type="text" maxLength={128} value={quotaForm.reference} onChange={(event) => setQuotaForm({ ...quotaForm, reference: event.target.value })} required />
+						</label>
+						<button className="primary-action" type="submit">确认发放</button>
+					</form>
+					{quotaError && <p className="request-error" role="alert">{quotaError}</p>}
+					{quotaResult && <p className="quota-success">{quotaResult}</p>}
+				</div>
+			)}
 
 			{ledgerVisible && (
 				<div className="ledger-panel" aria-live="polite">
