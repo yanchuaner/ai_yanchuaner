@@ -33,6 +33,8 @@ services:
       - ai-core
     ports:
       - "127.0.0.1:${AI_WEB_HOST_PORT:-3002}:3001"
+    volumes:
+      - ai_web_data:/data
     healthcheck:
       test:
         - CMD-SHELL
@@ -173,6 +175,7 @@ services:
 volumes:
   postgres_data:
   open_webui_data:
+  ai_web_data:
 
 networks:
   data:
