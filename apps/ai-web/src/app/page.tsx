@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Download, LogIn, LogOut, Plus, Send, ShieldCheck, Sparkles, Square, Trash2, User } from "lucide-react";
+import { Bot, Download, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, Sparkles, Square, Trash2, User, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 type SessionState =
@@ -30,6 +30,17 @@ type ConversationSummary = {
 	messageCount: number;
 };
 
+type LedgerEntry = {
+	id: number;
+	entry_type: string;
+	funding_source: string;
+	amount: number;
+	balance_after: number;
+	reason: string;
+	request_id: string;
+	created_at: number;
+};
+
 function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
   return { id: crypto.randomUUID(), role, content };
 }
@@ -44,9 +55,12 @@ export default function HomePage() {
 	const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
 	const [conversationId, setConversationId] = useState<string | null>(null);
 	const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+	const [ledgerVisible, setLedgerVisible] = useState(false);
+	const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+	const [ledgerTotal, setLedgerTotal] = useState(0);
 	const abortRef = useRef<AbortController | null>(null);
 
-  async function loadBalance() {
+	async function loadBalance() {
     try {
       const response = await fetch("/api/me/balance", { cache: "no-store" });
       if (response.ok) {
@@ -85,6 +99,26 @@ export default function HomePage() {
         await ensureConversation();
       }
 		} catch {}
+	}
+
+	async function loadLedger() {
+		try {
+			const response = await fetch("/api/me/ledger?page=1&pageSize=20", { cache: "no-store" });
+			if (response.ok) {
+				const body = await response.json();
+				setLedgerEntries(Array.isArray(body.entries) ? body.entries : []);
+				setLedgerTotal(typeof body.total === "number" ? body.total : 0);
+			}
+		} catch {}
+	}
+
+	async function toggleLedger() {
+		if (!ledgerVisible) {
+			await loadLedger();
+			setLedgerVisible(true);
+		} else {
+			setLedgerVisible(false);
+		}
 	}
 
 	async function openConversation(id: string) {
@@ -334,6 +368,9 @@ export default function HomePage() {
 					</label>
 				</div>
 				<div className="toolbar-actions">
+					<button className="icon-action" type="button" onClick={toggleLedger} title="额度流水" aria-label="额度流水">
+						<ReceiptText size={17} aria-hidden="true" />
+					</button>
 					<button className="icon-action" type="button" onClick={exportCurrentConversation} title="导出会话" aria-label="导出会话">
 						<Download size={17} aria-hidden="true" />
 					</button>
@@ -349,7 +386,34 @@ export default function HomePage() {
 				</div>
 			</div>
 
-          <div className="conversation" aria-live="polite">
+			{ledgerVisible && (
+				<div className="ledger-panel" aria-live="polite">
+					<div className="ledger-head">
+						<strong>额度流水（{ledgerTotal}）</strong>
+						<button className="icon-action" type="button" onClick={() => setLedgerVisible(false)} aria-label="关闭流水">
+							<X size={16} aria-hidden="true" />
+						</button>
+					</div>
+					{ledgerEntries.length === 0 ? (
+						<p className="status-line">暂无流水记录</p>
+					) : (
+						<ul className="ledger-list">
+							{ledgerEntries.map((entry) => (
+								<li className="ledger-item" key={entry.id}>
+									<span className="ledger-amount">{entry.amount > 0 ? `+${entry.amount}` : entry.amount}</span>
+									<span className="ledger-copy">
+										<strong>{entry.entry_type} · {entry.funding_source}</strong>
+										<small>{entry.reason || "—"}</small>
+										<small>{entry.request_id ? `request ${entry.request_id}` : ""} · {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}</small>
+									</span>
+								</li>
+							))}
+						</ul>
+					)}
+				</div>
+			)}
+
+			<div className="conversation" aria-live="polite">
             {messages.length === 0 && (
               <div className="empty-state">
                 <span><Bot size={24} aria-hidden="true" /></span>
