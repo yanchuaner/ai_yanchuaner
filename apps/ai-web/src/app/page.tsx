@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, LogIn, LogOut, Plus, Send, ShieldCheck, Sparkles, Square, User } from "lucide-react";
+import { Bot, Download, LogIn, LogOut, Plus, Send, ShieldCheck, Sparkles, Square, Trash2, User } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 type SessionState =
@@ -20,7 +20,14 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   requestId?: string;
-  usage?: { prompt: number; completion: number };
+	usage?: { prompt: number; completion: number };
+};
+
+type ConversationSummary = {
+	id: string;
+	title: string;
+	updatedAt: number;
+	messageCount: number;
 };
 
 function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
@@ -34,9 +41,10 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+	const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
+	const [conversationId, setConversationId] = useState<string | null>(null);
+	const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+	const abortRef = useRef<AbortController | null>(null);
 
   async function loadBalance() {
     try {
@@ -63,29 +71,64 @@ export default function HomePage() {
     return null;
   }
 
-  async function loadLatestConversation() {
-    try {
-      const list = await fetch("/api/chat/conversations", { cache: "no-store" }).then((response) => response.json());
-      const latest = list.conversations?.[0];
-      if (latest?.id) {
-        setConversationId(latest.id);
-        const detail = await fetch(`/api/chat/conversations/${latest.id}`, { cache: "no-store" }).then((response) => response.json());
+	async function loadConversations() {
+		try {
+			const list = await fetch("/api/chat/conversations", { cache: "no-store" }).then((response) => response.json());
+			const items = Array.isArray(list.conversations) ? list.conversations : [];
+			setConversations(items);
+			const latest = items[0];
+			if (latest?.id) {
+				setConversationId(latest.id);
+				const detail = await fetch(`/api/chat/conversations/${latest.id}`, { cache: "no-store" }).then((response) => response.json());
         if (Array.isArray(detail.messages)) setMessages(detail.messages);
       } else {
         await ensureConversation();
       }
-    } catch {}
-  }
+		} catch {}
+	}
 
-  async function newConversation() {
-    abortRef.current?.abort();
-    const created = await fetch("/api/chat/conversations", { method: "POST", cache: "no-store" }).then((response) => response.json());
-    if (created.conversation?.id) {
-      setConversationId(created.conversation.id);
-      setMessages([]);
-      setError("");
-    }
-  }
+	async function openConversation(id: string) {
+		if (!id || id === conversationId) return;
+		abortRef.current?.abort();
+		const detail = await fetch(`/api/chat/conversations/${id}`, { cache: "no-store" }).then((response) => response.json());
+		if (Array.isArray(detail.messages)) {
+			setConversationId(id);
+			setMessages(detail.messages);
+			setError("");
+		}
+	}
+
+	async function newConversation() {
+		abortRef.current?.abort();
+		const created = await fetch("/api/chat/conversations", { method: "POST", cache: "no-store" }).then((response) => response.json());
+		if (created.conversation?.id) {
+			setConversationId(created.conversation.id);
+			setConversations((current) => [created.conversation, ...current]);
+			setMessages([]);
+			setError("");
+		}
+	}
+
+	async function deleteCurrentConversation() {
+		if (!conversationId || !window.confirm("删除当前会话？此操作不可恢复。")) return;
+		await fetch(`/api/chat/conversations/${conversationId}`, { method: "DELETE" });
+		setConversationId(null);
+		setMessages([]);
+		await loadConversations();
+	}
+
+	async function exportCurrentConversation() {
+		if (!conversationId) return;
+		const response = await fetch(`/api/chat/conversations/${conversationId}/export`);
+		if (!response.ok) return;
+		const blob = await response.blob();
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = `yanchuaner-ai-conversation-${conversationId}.json`;
+		link.click();
+		URL.revokeObjectURL(url);
+	}
 
   useEffect(() => {
     fetch("/api/session", { cache: "no-store" })
@@ -100,9 +143,9 @@ export default function HomePage() {
           sessionQuotaUnits: body.sessionQuotaUnits,
           expiresAt: body.expiresAt,
         });
-        setModel(body.models[0] ?? "");
-        void loadBalance();
-        void loadLatestConversation();
+		setModel(body.models[0] ?? "");
+		void loadBalance();
+		void loadConversations();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -265,28 +308,46 @@ export default function HomePage() {
 
       {session.status === "authenticated" && (
         <section className="chat-workspace">
-          <div className="chat-toolbar">
-            <div className="identity">
-              <span className="avatar"><User size={17} aria-hidden="true" /></span>
-              <span><strong>{session.identity.name}</strong><small>#{session.subject.userId}</small></span>
-            </div>
-            <span className="balance" title="公益额度（单位）">
-              <small>公益额度</small>
-              <strong>{balanceUnits === null ? "—" : balanceUnits}</strong>
-            </span>
-            <label className="model-picker">
-              <span>模型</span>
-              <select value={model} onChange={(event) => setModel(event.target.value)} disabled={pending}>
-                {session.models.map((item) => <option value={item} key={item}>{item}</option>)}
-              </select>
-            </label>
-            <button className="icon-action" type="button" onClick={newConversation} title="新对话" aria-label="新对话">
-              <Plus size={18} aria-hidden="true" />
-            </button>
-            <button className="icon-action" type="button" onClick={logout} title="退出登录" aria-label="退出登录">
-              <LogOut size={18} aria-hidden="true" />
-            </button>
-          </div>
+			<div className="chat-toolbar">
+				<div className="identity">
+					<span className="avatar"><User size={17} aria-hidden="true" /></span>
+					<span><strong>{session.identity.name}</strong><small>#{session.subject.userId}</small></span>
+				</div>
+				<div className="toolbar-filters">
+					<span className="balance" title="公益额度（单位）">
+						<small>公益额度</small>
+						<strong>{balanceUnits === null ? "—" : balanceUnits}</strong>
+					</span>
+					<label className="conversation-picker">
+						<span>会话</span>
+						<select value={conversationId ?? ""} onChange={(event) => openConversation(event.target.value)} disabled={pending}>
+							{conversations.map((item) => (
+								<option value={item.id} key={item.id}>{item.title}</option>
+							))}
+						</select>
+					</label>
+					<label className="model-picker">
+						<span>模型</span>
+						<select value={model} onChange={(event) => setModel(event.target.value)} disabled={pending}>
+							{session.models.map((item) => <option value={item} key={item}>{item}</option>)}
+						</select>
+					</label>
+				</div>
+				<div className="toolbar-actions">
+					<button className="icon-action" type="button" onClick={exportCurrentConversation} title="导出会话" aria-label="导出会话">
+						<Download size={17} aria-hidden="true" />
+					</button>
+					<button className="icon-action" type="button" onClick={deleteCurrentConversation} title="删除会话" aria-label="删除会话">
+						<Trash2 size={17} aria-hidden="true" />
+					</button>
+					<button className="icon-action" type="button" onClick={newConversation} title="新对话" aria-label="新对话">
+						<Plus size={18} aria-hidden="true" />
+					</button>
+					<button className="icon-action" type="button" onClick={logout} title="退出登录" aria-label="退出登录">
+						<LogOut size={18} aria-hidden="true" />
+					</button>
+				</div>
+			</div>
 
           <div className="conversation" aria-live="polite">
             {messages.length === 0 && (

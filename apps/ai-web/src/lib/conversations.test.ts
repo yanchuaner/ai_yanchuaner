@@ -4,10 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  appendMessage,
-  createConversation,
-  getConversation,
-  listConversations,
+	appendMessage,
+	createConversation,
+	deleteConversation,
+	getConversation,
+	getConversationDetail,
+	listConversations,
 } from "./conversations";
 
 async function withDataDir(run: (dir: string) => Promise<void>) {
@@ -69,5 +71,20 @@ test("conversation store persists across reads on disk", async () => {
     await appendMessage(10, conversation.id, { id: "m1", role: "user", content: "持久化" });
     const raw = await readFile(path.join(dir, "conversations", "10.json"), "utf8");
     assert.match(raw, /持久化/);
-  });
+	});
+});
+
+test("conversation can be exported and deleted without affecting other users", async () => {
+	await withDataDir(async () => {
+		const conversation = await createConversation(11);
+		await appendMessage(11, conversation.id, { id: "m1", role: "user", content: "导出内容" });
+		const detail = await getConversationDetail(11, conversation.id);
+		assert.equal(detail.title, "导出内容");
+		assert.equal(detail.messages.length, 1);
+
+		await deleteConversation(11, conversation.id);
+		await assert.rejects(() => getConversation(11, conversation.id), /conversation not found/);
+		await assert.rejects(() => deleteConversation(11, conversation.id), /conversation not found/);
+		await assert.rejects(() => deleteConversation(12, conversation.id), /conversation not found/);
+	});
 });
