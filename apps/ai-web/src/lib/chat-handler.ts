@@ -35,7 +35,17 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   const parsed = parseAiChatRequest(body, session.credential.models);
   if (!parsed) return NextResponse.json({ error: "模型或消息格式无效。" }, { status: 400 });
   try {
-    return await forwardChatCompletion(config.yanCoreApiBaseUrl, session.credential.accessKey, parsed, fetcher, request.signal);
+    const upstream = await forwardChatCompletion(config.yanCoreApiBaseUrl, session.credential.accessKey, parsed, fetcher, request.signal);
+    if (upstream.status === 401 || upstream.status === 403) {
+      await upstream.body?.cancel();
+      const revoked = NextResponse.json(
+        { error: "登录会话已失效或已被撤销。", code: "SESSION_REVOKED" },
+        { status: 401 },
+      );
+      revoked.cookies.set(SESSION_COOKIE, "", cookieOptions(config.publicUrl, 0));
+      return revoked;
+    }
+    return upstream;
   } catch {
     return NextResponse.json({ error: "模型服务暂时不可用。" }, { status: 502 });
   }
