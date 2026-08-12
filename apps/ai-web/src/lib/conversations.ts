@@ -27,7 +27,14 @@ export type ConversationSummary = {
   id: string;
   title: string;
   updatedAt: number;
-  messageCount: number;
+	messageCount: number;
+};
+
+export type ConversationDetail = {
+	id: string;
+	title: string;
+	updatedAt: number;
+	messages: StoredMessage[];
 };
 
 type UserStore = {
@@ -98,6 +105,26 @@ export async function getConversation(userId: number, conversationId: string): P
   const conversation = store.conversations.find((item) => item.id === conversationId);
   if (!conversation) throw new Error("conversation not found");
   return conversation.messages.slice();
+}
+
+export async function getConversationDetail(userId: number, conversationId: string): Promise<ConversationDetail> {
+	const store = await readStore(userId);
+	const conversation = store.conversations.find((item) => item.id === conversationId);
+	if (!conversation) throw new Error("conversation not found");
+	return {
+		id: conversation.id,
+		title: conversation.title,
+		updatedAt: conversation.updatedAt,
+		messages: conversation.messages.slice(),
+	};
+}
+
+export async function deleteConversation(userId: number, conversationId: string): Promise<void> {
+	const store = await readStore(userId);
+	const next = store.conversations.filter((item) => item.id !== conversationId);
+	if (next.length === store.conversations.length) throw new Error("conversation not found");
+	store.conversations = next;
+	await writeStore(userId, store);
 }
 
 export async function createConversation(userId: number): Promise<ConversationSummary> {
