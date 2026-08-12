@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, LogIn, LogOut, Send, ShieldCheck, Sparkles, Square, User } from "lucide-react";
+import { Bot, LogIn, LogOut, Plus, Send, ShieldCheck, Sparkles, Square, User } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 type SessionState =
@@ -35,6 +35,7 @@ export default function HomePage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   async function loadBalance() {
@@ -46,6 +47,43 @@ export default function HomePage() {
       }
     } catch {
       setBalanceUnits(null);
+    }
+  }
+
+  async function ensureConversation(): Promise<string | null> {
+    if (conversationId) return conversationId;
+    try {
+      const response = await fetch("/api/chat/conversations", { method: "POST", cache: "no-store" });
+      const body = await response.json();
+      if (body.conversation?.id) {
+        setConversationId(body.conversation.id);
+        return body.conversation.id;
+      }
+    } catch {}
+    return null;
+  }
+
+  async function loadLatestConversation() {
+    try {
+      const list = await fetch("/api/chat/conversations", { cache: "no-store" }).then((response) => response.json());
+      const latest = list.conversations?.[0];
+      if (latest?.id) {
+        setConversationId(latest.id);
+        const detail = await fetch(`/api/chat/conversations/${latest.id}`, { cache: "no-store" }).then((response) => response.json());
+        if (Array.isArray(detail.messages)) setMessages(detail.messages);
+      } else {
+        await ensureConversation();
+      }
+    } catch {}
+  }
+
+  async function newConversation() {
+    abortRef.current?.abort();
+    const created = await fetch("/api/chat/conversations", { method: "POST", cache: "no-store" }).then((response) => response.json());
+    if (created.conversation?.id) {
+      setConversationId(created.conversation.id);
+      setMessages([]);
+      setError("");
     }
   }
 
@@ -64,6 +102,7 @@ export default function HomePage() {
         });
         setModel(body.models[0] ?? "");
         void loadBalance();
+        void loadLatestConversation();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -85,6 +124,11 @@ export default function HomePage() {
     if (!content || pending || session.status !== "authenticated" || !model) return;
     const userMessage = newMessage("user", content);
     const assistantMessage = newMessage("assistant", "");
+    const targetConversationId = await ensureConversation();
+    if (!targetConversationId) {
+      setError("会话初始化失败，请刷新后重试。");
+      return;
+    }
     const requestMessages = [...messages, userMessage].map(({ role, content: messageContent }) => ({ role, content: messageContent }));
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setPrompt("");
@@ -93,6 +137,11 @@ export default function HomePage() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
+      await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: userMessage.id, role: "user", content }),
+      });
       const response = await fetch("/api/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -114,6 +163,7 @@ export default function HomePage() {
       const decoder = new TextDecoder();
       let buffer = "";
       let receivedContent = false;
+      let assistantContent = "";
       let lastUsage: { prompt_tokens?: number; completion_tokens?: number } | null = null;
       while (true) {
         const { done, value } = await reader.read();
@@ -131,6 +181,7 @@ export default function HomePage() {
             const delta = chunk?.choices?.[0]?.delta?.content;
             if (typeof delta === "string" && delta.length > 0) {
               receivedContent = true;
+              assistantContent += delta;
               appendAssistantContent(assistantMessage.id, delta);
             }
           }
@@ -154,6 +205,22 @@ export default function HomePage() {
             : message,
         ),
       );
+      await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: assistantMessage.id,
+          role: "assistant",
+          content: assistantContent,
+          requestId,
+          usage: lastUsage
+            ? {
+                prompt: lastUsage.prompt_tokens ?? 0,
+                completion: lastUsage.completion_tokens ?? 0,
+              }
+            : undefined,
+        }),
+      });
       await loadBalance();
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "模型请求失败。");
@@ -213,6 +280,9 @@ export default function HomePage() {
                 {session.models.map((item) => <option value={item} key={item}>{item}</option>)}
               </select>
             </label>
+            <button className="icon-action" type="button" onClick={newConversation} title="新对话" aria-label="新对话">
+              <Plus size={18} aria-hidden="true" />
+            </button>
             <button className="icon-action" type="button" onClick={logout} title="退出登录" aria-label="退出登录">
               <LogOut size={18} aria-hidden="true" />
             </button>
