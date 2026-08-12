@@ -19,6 +19,8 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  requestId?: string;
+  usage?: { prompt: number; completion: number };
 };
 
 function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
@@ -32,7 +34,20 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  async function loadBalance() {
+    try {
+      const response = await fetch("/api/me/balance", { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setBalanceUnits(typeof body.balanceUnits === "number" ? body.balanceUnits : null);
+      }
+    } catch {
+      setBalanceUnits(null);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/session", { cache: "no-store" })
@@ -48,6 +63,7 @@ export default function HomePage() {
           expiresAt: body.expiresAt,
         });
         setModel(body.models[0] ?? "");
+        void loadBalance();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -83,14 +99,22 @@ export default function HomePage() {
         body: JSON.stringify({ model, messages: requestMessages }),
         signal: controller.signal,
       });
+      const requestId = response.headers.get("x-request-id") || "";
       if (!response.ok || !response.body) {
         const body = await response.json().catch(() => null);
-        throw new Error(body?.error || "模型请求失败。");
+        const message =
+          body?.code === "SESSION_REVOKED"
+            ? "登录会话已失效，请重新登录。"
+            : response.status === 429
+              ? "请求过于频繁，请稍后再试。"
+              : body?.error || "模型请求失败。";
+        throw new Error(message);
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let receivedContent = false;
+      let lastUsage: { prompt_tokens?: number; completion_tokens?: number } | null = null;
       while (true) {
         const { done, value } = await reader.read();
         buffer += decoder.decode(value, { stream: !done });
@@ -103,6 +127,7 @@ export default function HomePage() {
             if (!data || data === "[DONE]") continue;
             const chunk = JSON.parse(data);
             if (typeof chunk?.error?.message === "string") throw new Error(chunk.error.message);
+            if (chunk?.usage) lastUsage = chunk.usage;
             const delta = chunk?.choices?.[0]?.delta?.content;
             if (typeof delta === "string" && delta.length > 0) {
               receivedContent = true;
@@ -113,6 +138,23 @@ export default function HomePage() {
         if (done) break;
       }
       if (!receivedContent) throw new Error("模型未返回可显示内容。");
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantMessage.id
+            ? {
+                ...message,
+                requestId,
+                usage: lastUsage
+                  ? {
+                      prompt: lastUsage.prompt_tokens ?? 0,
+                      completion: lastUsage.completion_tokens ?? 0,
+                    }
+                  : undefined,
+              }
+            : message,
+        ),
+      );
+      await loadBalance();
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "模型请求失败。");
       setMessages((current) => current.filter((message) => message.id !== assistantMessage.id || message.content.length > 0));
@@ -161,6 +203,10 @@ export default function HomePage() {
               <span className="avatar"><User size={17} aria-hidden="true" /></span>
               <span><strong>{session.identity.name}</strong><small>#{session.subject.userId}</small></span>
             </div>
+            <span className="balance" title="公益额度（单位）">
+              <small>公益额度</small>
+              <strong>{balanceUnits === null ? "—" : balanceUnits}</strong>
+            </span>
             <label className="model-picker">
               <span>模型</span>
               <select value={model} onChange={(event) => setModel(event.target.value)} disabled={pending}>
@@ -183,7 +229,15 @@ export default function HomePage() {
             {messages.map((message) => (
               <article className={`message ${message.role}`} key={message.id}>
                 <span className="message-icon">{message.role === "user" ? <User size={17} /> : <Bot size={17} />}</span>
-                <div>{message.content || <span className="thinking">正在生成</span>}</div>
+                <div>
+                  {message.content || <span className="thinking">正在生成</span>}
+                  {message.role === "assistant" && (message.requestId || message.usage) && (
+                    <small className="message-meta">
+                      {message.requestId ? `request ${message.requestId}` : ""}
+                      {message.usage ? ` · 输入 ${message.usage.prompt} / 输出 ${message.usage.completion}` : ""}
+                    </small>
+                  )}
+                </div>
               </article>
             ))}
           </div>
