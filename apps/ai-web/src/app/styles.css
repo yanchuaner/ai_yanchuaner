@@ -83,6 +83,16 @@ button, select { cursor: pointer; }
 .icon-action:hover { border-color: var(--danger); color: var(--danger); }
 
 .conversation { margin: 0 auto; max-width: 860px; overflow-y: auto; padding: 32px 24px 120px; width: 100%; }
+.ledger-panel { border-bottom: 1px solid var(--border); margin: 0 auto; max-width: 860px; padding: 12px 24px; width: 100%; }
+.ledger-head { align-items: center; display: flex; justify-content: space-between; margin-bottom: 10px; }
+.ledger-head strong { font-size: 13px; }
+.ledger-list { list-style: none; margin: 0; padding: 0; }
+.ledger-item { align-items: flex-start; border-top: 1px solid var(--border); display: flex; gap: 12px; padding: 9px 0; }
+.ledger-item:first-child { border-top: 0; }
+.ledger-amount { color: var(--cyan); flex: 0 0 auto; font-size: 13px; min-width: 70px; text-align: right; }
+.ledger-copy { display: grid; gap: 2px; min-width: 0; }
+.ledger-copy strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-copy small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-state { color: var(--muted); padding: 18vh 0 48px; text-align: center; }
 .empty-state > span { color: var(--cyan); display: inline-flex; }
 .empty-state h1 { color: var(--text); font-size: 22px; margin: 14px 0 6px; }
