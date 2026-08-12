@@ -8,7 +8,7 @@
 互联网
   ├─ https://yanchuaner.cn    → Nginx → 127.0.0.1:3000 → Next.js
   ├─ https://api.example.com  → Nginx → 127.0.0.1:3101 → 燕中 API
-  └─ https://ai.example.com   → Nginx → 127.0.0.1:3001 → Open WebUI
+  └─ https://ai.example.com   → Nginx → 127.0.0.1:3002 → 自主 ai-web
                                                         ↓ Docker 内网
                                               燕中 API → LiteLLM:4000
                                                         ↓
@@ -19,7 +19,8 @@
 | --- | --- | --- |
 | 燕中网站 | `127.0.0.1:3000` | 仅通过 Nginx |
 | 燕中 API | `127.0.0.1:3101` | 仅通过 Nginx |
-| Open WebUI | `127.0.0.1:3001` | 仅通过 Nginx |
+| 自主 ai-web | `127.0.0.1:3002` | 仅通过 Nginx |
+| Open WebUI（过渡） | `127.0.0.1:3001` | 仅内网/SSH 隧道 |
 | LiteLLM | `127.0.0.1:4000` | 否，使用 SSH 隧道管理 |
 | PostgreSQL | 无宿主机映射 | 否 |
 
@@ -90,11 +91,11 @@ Open WebUI 当前共享服务 Key 只能记入独立服务账户，不能证明�
 
 ### 4.1 当前身份与计费边界
 
-Open WebUI 已关闭登录表单、密码鉴权和本地注册，只允许成员通过主站 OIDC 登录，各成员拥有独立账号和会话。主站 `role=admin` 映射为管理员，`alumni`、`student`、`teacher` 映射为普通用户；其他角色不得进入。
+自主 ai-web 已上线 `ai.yanchuaner.cn`：只允许成员通过主站 OIDC 登录，BFF 完成 YanCore 主体交换并取得逐登录短期 Key，再经燕中 API 调用 DeepSeek。主站 `role=admin` 映射为管理员，`alumni`、`student`、`teacher` 映射为普通用户；其他角色不得进入。
 
-截至 2026-08-01，生产 OIDC issuer 为 `https://yanchuaner.cn`，Open WebUI 的发现地址和容器配置均已切换到主域并通过真实管理员登录复验。`staging.yanchuaner.cn` 不再签发身份；恢复 staging 联合验收时必须创建独立客户端和签名密钥，不能复制生产配置。
+截至 2026-08-12，生产 OIDC issuer 为 `https://yanchuaner.cn`，`ai.yanchuaner.cn` 已切换为自主 ai-web 并通过真实成员登录、DeepSeek 对话与额度流水验收。`staging.yanchuaner.cn` 不再签发身份；Open WebUI 保留在 `127.0.0.1:3001` 仅作过渡/内网管理，不再作为公网产品入口。
 
-Open WebUI 调用燕中 API 时仍使用独立的共享服务 Key，因此用户登录身份可以区分，但模型请求在 API 控制面暂时只归属于服务账户，不得据此扣减个人公益额度。自主 `ai-web` 使用逐登录短期 Key，能够形成个人调用归因；两条链路的额度和审计记录不得混用。
+自主 `ai-web` 使用逐登录短期 Key，模型请求在 API 控制面按个人主体归因并写入额度流水与审计。Open WebUI 仍使用独立共享服务 Key，只允许内网/隧道访问，不得再向公网开放，也不得把共享账户调用解释为个人公益额度。
 
 暑期预览只面向少量已认证成员，不开放匿名访问和公开注册。普通成员主域登录已由项目负责人确认；扩大范围前仍必须完成角色同步、会话撤销和用户级账单验收。
 
@@ -104,7 +105,6 @@ LiteLLM 以美元累计成本。DeepSeek 上游的人民币报价按固定汇率
 | --- | ---: | ---: | ---: |
 | `deepseek-v4-flash` | 1 元/百万 token | 0.02 元/百万 token | 2 元/百万 token |
 | `deepseek-v4-pro` | 3 元/百万 token | 0.025 元/百万 token | 6 元/百万 token |
-| `gpt-image-2` | - | - | 0.1 美元/张 |
 
 运行 `scripts/harden-summer-runtime.ps1` 后，以下额度是 LiteLLM 历史 PoC Key 的服务级总额，不是个人额度，也不能替代燕中 API 的预算与账本：
 
@@ -119,7 +119,7 @@ LiteLLM 以美元累计成本。DeepSeek 上游的人民币报价按固定汇率
 
 仓库配置已经包含：
 
-- Open WebUI 上游端口 `127.0.0.1:3001`。
+- 自主 ai-web 上游端口 `127.0.0.1:3002`。
 - WebSocket 与流式响应支持。
 - 25 MB 请求体限制。
 - 登录接口按客户端 IP 限流。
@@ -150,7 +150,7 @@ docker compose ps
 docker stats --no-stream
 ```
 
-外部监控只访问 `https://ai.example.com/health`。内部健康脚本会通过 Compose 自动识别 Open WebUI 的实际宿主机端口。
+外部监控只访问 `https://ai.example.com/api/health`。内部健康脚本会通过 Compose 自动识别 ai-web 的实际宿主机端口。
 
 ## 7. 备份与恢复
 
@@ -197,10 +197,10 @@ tail -n 50 /var/log/ai-yanchuaner-backup.log
 同时确认：
 
 - 主站、燕中 API 与 AI 的 HTTPS 证书有效。
-- Open WebUI 仍只提供主站 OIDC 登录，本地登录、密码鉴权和注册保持关闭。
+- 自主 ai-web 只提供主站 OIDC 登录，本地登录、密码鉴权和注册保持关闭。
 - Open WebUI 服务 Key、模型白名单和总预算有效，且没有异常支出。
 - 自主 `ai-web` 的短期 Key、逐用户预算和审计链路没有跨用户复用。
-- 上游账号余额充足，图片仍按 0.1 美元/次计费。
+- 上游账号余额充足，DeepSeek 预算与用量正常。
 - 最近一次备份校验通过，服务器外副本可访问。
 
 当前生产环境由 `/etc/cron.d/yanchuaner-backups` 统一调度：主站每日 `02:15` 备份，AI 每周日 `04:00` 备份，两项任务均使用 `flock` 防止并发。AI 备份会短暂停止并重启 Open WebUI，健康检查包含有限冷启动重试；备份根目录及时间戳目录权限均为 `700`。
