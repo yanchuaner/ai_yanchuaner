@@ -12,7 +12,7 @@ services:
     build:
       context: .
       dockerfile: apps/ai-web/Dockerfile
-    image: ai-yanchuaner/ai-web:phase-1
+    image: ai-yanchuaner/ai-web:preview
     restart: unless-stopped
     environment:
       AI_WEB_PUBLIC_URL: ${AI_WEB_PUBLIC_URL:-http://localhost:3002}
