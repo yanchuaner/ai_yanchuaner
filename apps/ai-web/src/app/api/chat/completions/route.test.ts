@@ -57,3 +57,36 @@ test("chat route rejects a cross-origin request before forwarding", async () => 
   }, "https://evil.example.test"), config);
   assert.equal(response.status, 403);
 });
+
+test("chat route clears the session when the API reports a revoked credential", async () => {
+  const fetcher: typeof fetch = async () => {
+    return new Response(JSON.stringify({ error: "token revoked" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const response = await handleChatCompletion(authenticatedRequest("/api/chat/completions", {
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: "hello" }],
+  }), config, fetcher);
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.code, "SESSION_REVOKED");
+  const setCookie = response.headers.get("set-cookie") ?? "";
+  assert.match(setCookie, /yc_ai_session=;/);
+  assert.match(setCookie, /Max-Age=0/);
+});
+
+test("chat route keeps a model-service failure as a gateway error", async () => {
+  const fetcher: typeof fetch = async () => {
+    return new Response(JSON.stringify({ error: "upstream down" }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const response = await handleChatCompletion(authenticatedRequest("/api/chat/completions", {
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: "hello" }],
+  }), config, fetcher);
+  assert.equal(response.status, 502);
+});

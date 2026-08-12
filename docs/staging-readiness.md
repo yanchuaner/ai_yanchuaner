@@ -32,4 +32,4 @@ pwsh ./scripts/check-staging-readiness.ps1 -EnvFile ./.env -SkipComposeConfig
 
 截至 2026-08-01，`yanchuaner.cn` 是唯一身份提供方，`api.yanchuaner.cn` 与 `ai.yanchuaner.cn` 均已改用主域；`staging.yanchuaner.cn` 的 OAuth/OIDC 签发已关闭。Open WebUI 使用独立 OIDC 客户端，主站管理员已通过全新浏览器上下文复用原管理员记录；本地登录表单关闭、OAuth 自动跳转开启、密码接口返回 403。燕中 API 的受限服务 Key 已完成真实 DeepSeek 文本请求，公开预览当前仍只部署 Open WebUI 过渡客户端；自主 `ai-web` profile 继续在隔离环境验收。
 
-项目负责人已确认普通成员主域登录通过。以下项目仍不得标记为完成：角色变化和主站停用后的存量会话撤销，Open WebUI 逐用户请求归因，预算耗尽、失败退款、TPM 超限，以及跨供应商故障切换。管理员与普通成员回调通过不能替代这些计费和撤销门禁。
+项目负责人已确认普通成员主域登录通过。主站账号停用/角色变化已接入签名身份事件同步：API 收到事件后幂等撤销存量 grant 与 Token，自主 AI Web 在上游返回 401/403 时立即清除会话。以下项目仍不得标记为完成：staging 上的跨站撤销联合验收，Open WebUI 逐用户请求归因，预算耗尽、失败退款、TPM 超限，以及跨供应商故障切换。管理员与普通成员回调通过不能替代这些计费和撤销门禁。
