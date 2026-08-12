@@ -4,9 +4,10 @@ import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
+  const { id } = await params;
   const body = (await request.json().catch(() => null)) as unknown;
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "消息格式无效。" }, { status: 400 });
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         : undefined,
   };
   try {
-    const conversation = await appendMessage(guard.session.subject.userId, params.id, message);
+    const conversation = await appendMessage(guard.session.subject.userId, id, message);
     return NextResponse.json({ conversation });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : "";
