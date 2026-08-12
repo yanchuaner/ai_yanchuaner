@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Coins, Download, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, Sparkles, Square, Trash2, User, X } from "lucide-react";
+import { Bot, Coins, Download, KeyRound, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, Sparkles, Square, Trash2, User, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 type SessionState =
@@ -41,6 +41,19 @@ type LedgerEntry = {
 	created_at: number;
 };
 
+type ApiKeyItem = {
+	id: number;
+	name: string;
+	key: string;
+	status: number;
+	model_limits_enabled: boolean;
+	model_limits: string;
+	remain_quota: number;
+	unlimited_quota: boolean;
+	expired_time: number;
+	created_time: number;
+};
+
 function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
   return { id: crypto.randomUUID(), role, content };
 }
@@ -62,6 +75,11 @@ export default function HomePage() {
 	const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
 	const [quotaResult, setQuotaResult] = useState("");
 	const [quotaError, setQuotaError] = useState("");
+	const [keysVisible, setKeysVisible] = useState(false);
+	const [keys, setKeys] = useState<ApiKeyItem[]>([]);
+	const [keyForm, setKeyForm] = useState({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
+	const [createdKey, setCreatedKey] = useState("");
+	const [keysError, setKeysError] = useState("");
 	const abortRef = useRef<AbortController | null>(null);
 
 	async function loadBalance() {
@@ -148,6 +166,55 @@ export default function HomePage() {
 		setQuotaResult(`发放成功，最新余额 ${body.balanceAfter}`);
 		setQuotaForm((current) => ({ ...current, userId: "", amount: "", reference: "" }));
 		void loadBalance();
+	}
+
+	async function loadKeys() {
+		try {
+			const response = await fetch("/api/me/keys", { cache: "no-store" });
+			if (response.ok) {
+				const body = await response.json();
+				setKeys(Array.isArray(body.keys) ? body.keys : []);
+			}
+		} catch {}
+	}
+
+	async function toggleKeys() {
+		if (!keysVisible) {
+			await loadKeys();
+			setKeysVisible(true);
+		} else {
+			setKeysVisible(false);
+		}
+	}
+
+	async function submitKey(event: FormEvent) {
+		event.preventDefault();
+		setKeysError("");
+		setCreatedKey("");
+		const response = await fetch("/api/me/keys", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				name: keyForm.name,
+				models: keyForm.models.join(","),
+				remainQuota: Number(keyForm.remainQuota),
+				expiredTime: Math.floor(Date.now() / 1000) + Number(keyForm.expiryDays) * 86400,
+			}),
+		});
+		const body = await response.json().catch(() => null);
+		if (!response.ok || !body?.key) {
+			setKeysError(body?.error || "Key 创建失败。");
+			return;
+		}
+		setCreatedKey(body.key);
+		setKeyForm({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
+		await loadKeys();
+	}
+
+	async function deleteKey(id: number) {
+		if (!window.confirm("删除该 Key？使用它的请求将立即失效。")) return;
+		const response = await fetch(`/api/me/keys/${id}`, { method: "DELETE" });
+		if (response.ok) await loadKeys();
 	}
 
 	async function openConversation(id: string) {
@@ -397,6 +464,9 @@ export default function HomePage() {
 					</label>
 				</div>
 				<div className="toolbar-actions">
+					<button className="icon-action" type="button" onClick={toggleKeys} title="API Key" aria-label="API Key">
+						<KeyRound size={17} aria-hidden="true" />
+					</button>
 					{session.identity.role === "admin" && (
 						<button className="icon-action" type="button" onClick={() => setQuotaVisible(!quotaVisible)} title="额度发放" aria-label="额度发放">
 							<Coins size={17} aria-hidden="true" />
@@ -419,6 +489,80 @@ export default function HomePage() {
 					</button>
 				</div>
 			</div>
+
+			{keysVisible && (
+				<div className="quota-panel keys-panel" aria-live="polite">
+					<div className="ledger-head">
+						<strong>个人 API Key</strong>
+						<button className="icon-action" type="button" onClick={() => setKeysVisible(false)} aria-label="关闭 API Key">
+							<X size={16} aria-hidden="true" />
+						</button>
+					</div>
+					<form className="quota-form" onSubmit={submitKey}>
+						<label>
+							<span>名称</span>
+							<input type="text" maxLength={50} value={keyForm.name} onChange={(event) => setKeyForm({ ...keyForm, name: event.target.value })} required />
+						</label>
+						<label>
+							<span>预算（额度单位）</span>
+							<input type="number" min="1" value={keyForm.remainQuota} onChange={(event) => setKeyForm({ ...keyForm, remainQuota: event.target.value })} required />
+						</label>
+						<label>
+							<span>有效期</span>
+							<select value={keyForm.expiryDays} onChange={(event) => setKeyForm({ ...keyForm, expiryDays: event.target.value })}>
+								<option value="7">7 天</option>
+								<option value="30">30 天</option>
+								<option value="90">90 天</option>
+							</select>
+						</label>
+						<label>
+							<span>模型</span>
+							<div className="model-checks">
+								{session.models.map((item) => (
+									<label key={item} className="model-check">
+										<input
+											type="checkbox"
+											checked={keyForm.models.includes(item)}
+											onChange={(event) =>
+												setKeyForm((current) => ({
+													...current,
+													models: event.target.checked
+														? [...current.models, item]
+														: current.models.filter((model) => model !== item),
+												}))
+											}
+										/>
+										<span>{item}</span>
+									</label>
+								))}
+							</div>
+						</label>
+						<button className="primary-action" type="submit">创建 Key</button>
+					</form>
+					{createdKey && (
+						<div className="one-time-key">
+							<strong>请立即保存，只显示一次：</strong>
+							<code>{createdKey}</code>
+						</div>
+					)}
+					{keysError && <p className="request-error" role="alert">{keysError}</p>}
+					<ul className="ledger-list">
+						{keys.map((item) => (
+							<li className="ledger-item" key={item.id}>
+								<span className="ledger-amount">{item.status === 1 ? "启用" : "停用"}</span>
+								<span className="ledger-copy">
+									<strong>{item.name || "未命名"} · {item.key}</strong>
+									<small>{item.model_limits || "全部模型"} · 剩余 {item.remain_quota}</small>
+									<small>有效期至 {new Date(item.expired_time * 1000).toLocaleString("zh-CN")}</small>
+								</span>
+								<button className="icon-action" type="button" onClick={() => deleteKey(item.id)} aria-label="删除 Key">
+									<Trash2 size={16} aria-hidden="true" />
+								</button>
+							</li>
+						))}
+					</ul>
+				</div>
+			)}
 
 			{quotaVisible && session.identity.role === "admin" && (
 				<div className="quota-panel" aria-live="polite">
