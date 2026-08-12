@@ -100,6 +100,12 @@ button, select { cursor: pointer; }
 .quota-form input, .quota-form select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; height: 36px; padding: 0 10px; width: 100%; }
 .quota-form .primary-action { grid-column: 1 / -1; justify-self: start; }
 .quota-success { color: var(--cyan); font-size: 13px; margin: 10px 0 0; }
+.model-checks { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; min-height: 36px; }
+.model-check { align-items: center; display: flex; font-size: 12px; gap: 5px; }
+.one-time-key { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-top: 12px; padding: 10px; }
+.one-time-key strong { display: block; font-size: 12px; margin-bottom: 5px; }
+.one-time-key code { color: var(--gold); font-size: 12px; overflow-wrap: anywhere; }
+.keys-panel .ledger-item { align-items: center; }
 .empty-state { color: var(--muted); padding: 18vh 0 48px; text-align: center; }
 .empty-state > span { color: var(--cyan); display: inline-flex; }
 .empty-state h1 { color: var(--text); font-size: 22px; margin: 14px 0 6px; }
@@ -135,6 +141,7 @@ button, select { cursor: pointer; }
   .toolbar-actions { margin-left: 0; width: 100%; }
   .conversation-picker select, .model-picker select { max-width: none; min-width: 0; width: 100%; }
   .quota-form { grid-template-columns: 1fr; }
+  .model-checks { align-items: flex-start; flex-direction: column; }
   .chat-workspace { grid-template-rows: auto minmax(0, 1fr) auto; }
   .conversation { padding: 24px 16px 88px; }
   .composer-wrap { padding: 10px 12px 12px; }
