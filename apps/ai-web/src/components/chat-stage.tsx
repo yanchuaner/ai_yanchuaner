@@ -25,7 +25,8 @@ type ChatStageProps = {
   onChangeTitle: (title: string) => void;
   activeMode: ChatMode;
   activePersona?: Persona;
-  onOpenPersonaDetail: () => void;
+  cast: Persona[];
+  onOpenPersonaDetail: (persona: Persona) => void;
   messages: ChatMessage[];
   quickPersonas: Persona[];
   onQuickSwitch: (persona?: Persona) => void;
@@ -57,6 +58,7 @@ export function ChatStage({
   onChangeTitle,
   activeMode,
   activePersona,
+  cast,
   onOpenPersonaDetail,
   messages,
   quickPersonas,
@@ -126,7 +128,9 @@ export function ChatStage({
       <header className={styles.toolbar}>
         <div className={styles.titleArea}>
           <div className={styles.titleRow}>
-            <span className={styles.modeChip}>{activeMode === "roleplay" ? "角色扮演" : "普通助手"}</span>
+            <span className={styles.modeChip}>
+              {activeMode === "roleplay" ? "角色扮演" : activeMode === "group" ? "多人群聊" : "普通助手"}
+            </span>
             {editingTitle ? (
               <input
                 className={styles.titleInput}
@@ -151,7 +155,12 @@ export function ChatStage({
           </div>
 
           {activePersona ? (
-            <button className={styles.personaBar} type="button" onClick={onOpenPersonaDetail} title="查看角色详情">
+            <button
+              className={styles.personaBar}
+              type="button"
+              onClick={() => onOpenPersonaDetail(activePersona)}
+              title="查看角色详情"
+            >
               <span className={styles.personaAvatar}>{activePersona.avatar || "🎭"}</span>
               <span className={styles.personaCopy}>
                 <strong>{activePersona.name}</strong>
@@ -159,6 +168,21 @@ export function ChatStage({
               </span>
               <Check size={13} aria-hidden="true" />
             </button>
+          ) : cast.length > 0 ? (
+            <div className={styles.castRow}>
+              {cast.map((persona) => (
+                <button
+                  key={persona.id}
+                  className={styles.castChip}
+                  type="button"
+                  onClick={() => onOpenPersonaDetail(persona)}
+                  title="查看角色详情"
+                >
+                  <span>{persona.avatar || "🎭"}</span>
+                  {persona.name}
+                </button>
+              ))}
+            </div>
           ) : (
             <span className={styles.plainHint}>正在使用普通助手，直接问答即可。</span>
           )}
@@ -223,11 +247,27 @@ export function ChatStage({
           <div className={styles.messages} aria-live="polite">
             {displayMessages.length === 0 && (
               <div className={styles.empty}>
-                <span>
-                  <Bot size={26} aria-hidden="true" />
-                </span>
-                <h1>新对话</h1>
-                <p>{activePersona ? `与「${activePersona.name}」开始对话` : `当前模型 ${model || "未选择"}`}</p>
+                {activeMode === "group" && cast.length > 0 ? (
+                  <>
+                    <div className={styles.castReady}>
+                      {cast.map((persona) => (
+                        <span key={persona.id} title={persona.name}>
+                          {persona.avatar || "🎭"}
+                        </span>
+                      ))}
+                    </div>
+                    <h1>群聊已就绪</h1>
+                    <p>先打个招呼，角色们会轮流回应你。</p>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      <Bot size={26} aria-hidden="true" />
+                    </span>
+                    <h1>新对话</h1>
+                    <p>{activePersona ? `与「${activePersona.name}」开始对话` : `当前模型 ${model || "未选择"}`}</p>
+                  </>
+                )}
               </div>
             )}
             {displayMessages.map((message) => (
@@ -322,7 +362,9 @@ export function ChatStage({
             </section>
             <section className={styles.contextSection}>
               <h3>长期记忆</h3>
-              {memoryState === "generating" ? (
+              {activeMode === "group" ? (
+                <p className={styles.knowledgeHits}>群聊暂不自动整理记忆。</p>
+              ) : memoryState === "generating" ? (
                 <p className={styles.knowledgeHits}>正在整理这段对话的记忆…</p>
               ) : memoryState === "error" ? (
                 <p className={styles.knowledgeHits}>记忆整理失败，下轮对话会重试。</p>
@@ -349,6 +391,17 @@ export function ChatStage({
               <section className={styles.contextSection}>
                 <h3>角色设定摘要</h3>
                 <p>{activePersona.description}</p>
+              </section>
+            )}
+            {activeMode === "group" && cast.length > 0 && (
+              <section className={styles.contextSection}>
+                <h3>群聊成员</h3>
+                {cast.map((persona) => (
+                  <p className={styles.castMember} key={persona.id}>
+                    {persona.avatar || "🎭"} {persona.name}：{persona.description.slice(0, 60)}
+                    {persona.description.length > 60 ? "…" : ""}
+                  </p>
+                ))}
               </section>
             )}
           </aside>

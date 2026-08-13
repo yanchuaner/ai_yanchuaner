@@ -120,8 +120,8 @@ export function HomeView({
             {recentConversations.slice(0, 5).map((conversation) => (
               <li key={conversation.id}>
                 <button className={styles.conversationItem} type="button" onClick={() => onOpenConversation(conversation.id)}>
-                  <span className={conversation.mode === "roleplay" ? styles.itemIconRoleplay : styles.itemIcon}>
-                    {conversation.mode === "roleplay" ? "🎭" : <Bot size={15} aria-hidden="true" />}
+                  <span className={conversation.mode !== "chat" ? styles.itemIconRoleplay : styles.itemIcon}>
+                    {conversation.mode !== "chat" ? "🎭" : <Bot size={15} aria-hidden="true" />}
                   </span>
                   <span>
                     <strong>{conversation.title || conversation.personaName || "未命名会话"}</strong>

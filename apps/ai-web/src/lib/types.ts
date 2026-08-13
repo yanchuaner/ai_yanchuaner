@@ -2,7 +2,7 @@
 
 import type { Persona } from "@/lib/personas";
 
-export type ChatMode = "chat" | "roleplay";
+export type ChatMode = "chat" | "roleplay" | "group";
 
 export type ChatMessage = {
   id: string;
@@ -20,6 +20,7 @@ export type ConversationSummary = {
   mode: ChatMode;
   personaName?: string;
   personaId?: string;
+  personaIds?: string[];
   pinned?: boolean;
   archived?: boolean;
 };

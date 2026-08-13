@@ -9,6 +9,7 @@ import {
   type KnowledgeHit,
 } from "@/lib/knowledge-library";
 import { getPersonaMemory } from "@/lib/memory-library";
+import type { Persona } from "@/lib/personas";
 import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
 
 export type ChatHandlerConfig = {
@@ -50,11 +51,18 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
       const detail = await getConversationDetail(session.subject.userId, candidate.conversationId);
       const persona = detail.persona;
       const query = [...parsed.messages].reverse().find((message) => message.role === "user")?.content;
-      if (persona && query) {
+      const hasGroup = detail.mode === "group" && Boolean(detail.cast?.length);
+      if ((persona || hasGroup) && query) {
         const injections: { role: "system"; content: string }[] = [];
-        const memory = await getPersonaMemory(session.subject.userId, persona.id).catch(() => null);
-        if (memory?.summary) {
-          injections.push({ role: "system", content: `【角色长期记忆】\n${memory.summary}` });
+        if (hasGroup && detail.cast) {
+          injections.push({ role: "system", content: buildGroupPrompt(detail.cast, detail.director) });
+        }
+        const memoryPersona = hasGroup ? detail.director : persona;
+        if (memoryPersona) {
+          const memory = await getPersonaMemory(session.subject.userId, memoryPersona.id).catch(() => null);
+          if (memory?.summary) {
+            injections.push({ role: "system", content: `【角色长期记忆】\n${memory.summary}` });
+          }
         }
         const embeddingModel = resolveEmbeddingModel(session);
         if (embeddingModel) {
@@ -66,22 +74,43 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
             fetcher,
           );
           const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
-          const [personaHits, userHits] = await Promise.all([
-            searchPersonaKnowledge(
+          const userHits = await searchUserKnowledge(
+            session.subject.userId,
+            embedded.vectors[0],
+            hasGroup ? 2 : 4,
+            Number.isFinite(threshold) ? threshold : 0.3,
+          );
+          let hits: KnowledgeHit[];
+          if (hasGroup && detail.cast) {
+            const castHits = await Promise.all(
+              detail.cast.map((castPersona) =>
+                searchPersonaKnowledge(
+                  session.subject.userId,
+                  castPersona.id,
+                  embedded.vectors[0],
+                  2,
+                  Number.isFinite(threshold) ? threshold : 0.3,
+                ).then((results) =>
+                  results.map((hit) => ({
+                    ...hit,
+                    documentName: `${castPersona.name} · ${hit.documentName}`,
+                  })),
+                ),
+              ),
+            );
+            hits = dedupeHits([...castHits.flat(), ...userHits]).slice(0, 6);
+          } else if (persona) {
+            const personaHits = await searchPersonaKnowledge(
               session.subject.userId,
               persona.id,
               embedded.vectors[0],
               4,
               Number.isFinite(threshold) ? threshold : 0.3,
-            ),
-            searchUserKnowledge(
-              session.subject.userId,
-              embedded.vectors[0],
-              4,
-              Number.isFinite(threshold) ? threshold : 0.3,
-            ),
-          ]);
-          const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
+            );
+            hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
+          } else {
+            hits = [];
+          }
           if (hits.length > 0) {
             injections.push({ role: "system", content: buildKnowledgePrompt(hits) });
             knowledgeHits = hits.length;
@@ -136,4 +165,25 @@ function dedupeHits(hits: KnowledgeHit[]): KnowledgeHit[] {
     seen.add(hit.text);
     return true;
   });
+}
+
+function buildGroupPrompt(cast: Persona[], director?: Persona): string {
+  const lines = ["你正在参与一场多人角色扮演群聊，以下是全部成员设定：", ""];
+  for (const persona of cast) {
+    lines.push(`《${persona.name}》`);
+    lines.push(persona.description);
+    if (persona.style) lines.push(`说话风格：${persona.style}`);
+    if (persona.world) lines.push(`世界观：${persona.world}`);
+    lines.push("");
+  }
+  if (director) {
+    lines.push("【导演】");
+    lines.push(director.description);
+    if (director.style) lines.push(`导演风格：${director.style}`);
+    lines.push("");
+  }
+  lines.push(
+    "规则：每次由其中一个角色发言，发言以「角色名：」开头；不要替其他角色说话；导演负责旁白、场景与节奏推进；用中文回复，保持角色一致。",
+  );
+  return lines.join("\n").slice(0, 8000);
 }

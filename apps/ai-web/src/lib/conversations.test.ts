@@ -159,3 +159,29 @@ test("conversations can be renamed, pinned, archived and filtered by persona", a
 		await assert.rejects(() => updateConversation(14, plain.id, { pinned: true }), /not found/);
 	});
 });
+
+test("group conversations persist cast and optional director", async () => {
+	await withDataDir(async () => {
+		const cast = [PRESET_PERSONAS[0], PRESET_PERSONAS[1]];
+		const director = PRESET_PERSONAS[2];
+		const conversation = await createConversation(15, { mode: "group", cast, director });
+		assert.equal(conversation.mode, "group");
+		assert.deepEqual(conversation.personaIds, cast.map((persona) => persona.id));
+		assert.equal(conversation.title, `${cast[0].name} × ${cast[1].name}`);
+
+		const detail = await getConversationDetail(15, conversation.id);
+		assert.deepEqual(detail.cast, cast);
+		assert.equal(detail.director?.id, director.id);
+
+		await assert.rejects(() => createConversation(15, { mode: "group", cast: [cast[0]] }), /cast is invalid/);
+		await assert.rejects(() => createConversation(15, { mode: "group", cast: [cast[0], cast[0]] }), /cast is invalid/);
+		await assert.rejects(
+			() => createConversation(15, { mode: "group", cast: [cast[0], cast[1], cast[0], cast[1], cast[0]] }),
+			/cast is invalid/,
+		);
+		await assert.rejects(
+			() => createConversation(15, { mode: "group", cast, director: { ...director, name: "" } }),
+			/director is invalid/,
+		);
+	});
+});
