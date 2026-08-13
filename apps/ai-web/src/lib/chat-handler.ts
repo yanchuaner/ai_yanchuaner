@@ -65,8 +65,9 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
     }
   }
   if (conversationDetail?.mode === "group" && conversationDetail.cast?.length) {
+    const opening = candidate?.opening === true;
     if (candidate?.groupSchedule === true) {
-      return handleGroupSchedule(request, config, session, parsed, conversationDetail, fetcher);
+      return handleGroupSchedule(request, config, session, parsed, conversationDetail, fetcher, opening);
     }
     if (typeof candidate?.speakerId === "string") {
       return handleGroupSpeaker(
@@ -77,6 +78,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
         conversationDetail,
         candidate.speakerId,
         fetcher,
+        opening,
       );
     }
   } else {
@@ -161,13 +163,20 @@ async function handleGroupSchedule(
   parsed: AiChatRequest,
   detail: ConversationDetail,
   fetcher: typeof fetch,
+  opening: boolean,
 ): Promise<Response> {
   const cast = detail.cast ?? [];
-  const history = ensureLatestUser(detail.messages, parsed);
+  const history = opening ? detail.messages : ensureLatestUser(detail.messages, parsed);
   const schedulerMessages: AiChatMessage[] = [
     { role: "system", content: buildSchedulerPrompt(cast, detail.director, detail.world, detail.userRole) },
     ...formatGroupHistory(history, cast, detail.userRole?.name).slice(-16),
   ];
+  if (opening && !history.some((message) => message.role === "user")) {
+    schedulerMessages.push({
+      role: "user",
+      content: "（群聊刚开始，请选择 1 到 2 位成员做简短自然的开场介绍，不需要所有成员都开口。）",
+    });
+  }
   const schedulerResponse = await forwardChatCompletionJson(
     config.yanCoreApiBaseUrl,
     session.credential.accessKey,
@@ -210,11 +219,12 @@ async function handleGroupSpeaker(
   detail: ConversationDetail,
   speakerId: string,
   fetcher: typeof fetch,
+  opening: boolean,
 ): Promise<Response> {
   const cast = detail.cast ?? [];
   const speaker = cast.find((persona) => persona.id === speakerId);
   if (!speaker) return NextResponse.json({ error: "发言人不存在。" }, { status: 400 });
-  const history = ensureLatestUser(detail.messages, parsed);
+  const history = opening ? detail.messages : ensureLatestUser(detail.messages, parsed);
   const query = [...history].reverse().find((message) => message.role === "user")?.content ?? "";
   let userHits: KnowledgeHit[] = [];
   let personaHits: KnowledgeHit[] = [];
@@ -246,6 +256,11 @@ async function handleGroupSpeaker(
   const systemBlocks = [
     buildGroupSpeakerPrompt(speaker, cast, detail.director, detail.world, detail.userRole),
   ];
+  if (opening && history.length === 0) {
+    systemBlocks.push(
+      "这是群聊的开场：请用 1 到 2 句话做简短自然的自我介绍或问候，可以称呼在场的其他成员，不要长篇大论。",
+    );
+  }
   const memory = await getPersonaMemory(session.subject.userId, speaker.id).catch(() => null);
   if (memory?.summary) systemBlocks.push(`【角色长期记忆】\n${memory.summary}`);
   const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
