@@ -1,7 +1,8 @@
 "use client";
 
-import { Bot, Coins, Download, KeyRound, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, Sparkles, Square, Trash2, User, X } from "lucide-react";
+import { Bot, Coins, Download, KeyRound, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, SlidersHorizontal, Sparkles, Square, Trash2, User } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { Drawer } from "@/components/drawer";
 
 type SessionState =
   | { status: "loading" }
@@ -68,18 +69,17 @@ export default function HomePage() {
 	const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
 	const [conversationId, setConversationId] = useState<string | null>(null);
 	const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-	const [ledgerVisible, setLedgerVisible] = useState(false);
 	const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
 	const [ledgerTotal, setLedgerTotal] = useState(0);
-	const [quotaVisible, setQuotaVisible] = useState(false);
 	const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
 	const [quotaResult, setQuotaResult] = useState("");
 	const [quotaError, setQuotaError] = useState("");
-	const [keysVisible, setKeysVisible] = useState(false);
 	const [keys, setKeys] = useState<ApiKeyItem[]>([]);
 	const [keyForm, setKeyForm] = useState({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
 	const [createdKey, setCreatedKey] = useState("");
 	const [keysError, setKeysError] = useState("");
+	const [toolsOpen, setToolsOpen] = useState(false);
+	const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota">("ledger");
 	const abortRef = useRef<AbortController | null>(null);
 
 	async function loadBalance() {
@@ -134,15 +134,6 @@ export default function HomePage() {
 		} catch {}
 	}
 
-	async function toggleLedger() {
-		if (!ledgerVisible) {
-			await loadLedger();
-			setLedgerVisible(true);
-		} else {
-			setLedgerVisible(false);
-		}
-	}
-
 	async function submitQuota(event: FormEvent) {
 		event.preventDefault();
 		setQuotaResult("");
@@ -178,13 +169,11 @@ export default function HomePage() {
 		} catch {}
 	}
 
-	async function toggleKeys() {
-		if (!keysVisible) {
-			await loadKeys();
-			setKeysVisible(true);
-		} else {
-			setKeysVisible(false);
-		}
+	async function openTools(tab: "ledger" | "keys" | "quota") {
+		setToolsTab(tab);
+		setToolsOpen(true);
+		if (tab === "ledger") await loadLedger();
+		if (tab === "keys") await loadKeys();
 	}
 
 	async function submitKey(event: FormEvent) {
@@ -464,16 +453,8 @@ export default function HomePage() {
 					</label>
 				</div>
 				<div className="toolbar-actions">
-					<button className="icon-action" type="button" onClick={toggleKeys} title="API Key" aria-label="API Key">
-						<KeyRound size={17} aria-hidden="true" />
-					</button>
-					{session.identity.role === "admin" && (
-						<button className="icon-action" type="button" onClick={() => setQuotaVisible(!quotaVisible)} title="额度发放" aria-label="额度发放">
-							<Coins size={17} aria-hidden="true" />
-						</button>
-					)}
-					<button className="icon-action" type="button" onClick={toggleLedger} title="额度流水" aria-label="额度流水">
-						<ReceiptText size={17} aria-hidden="true" />
+					<button className="icon-action" type="button" onClick={() => openTools("ledger")} title="额度与 Key" aria-label="额度与 Key">
+						<SlidersHorizontal size={17} aria-hidden="true" />
 					</button>
 					<button className="icon-action" type="button" onClick={exportCurrentConversation} title="导出会话" aria-label="导出会话">
 						<Download size={17} aria-hidden="true" />
@@ -490,145 +471,146 @@ export default function HomePage() {
 				</div>
 			</div>
 
-			{keysVisible && (
-				<div className="quota-panel keys-panel" aria-live="polite">
-					<div className="ledger-head">
-						<strong>个人 API Key</strong>
-						<button className="icon-action" type="button" onClick={() => setKeysVisible(false)} aria-label="关闭 API Key">
-							<X size={16} aria-hidden="true" />
+			<Drawer open={toolsOpen} title="额度与 Key" onClose={() => setToolsOpen(false)}>
+				<div className="tools-tabs" role="tablist" aria-label="额度与 Key">
+					<button className={toolsTab === "ledger" ? "tools-tab active" : "tools-tab"} type="button" onClick={() => openTools("ledger")}>
+						<ReceiptText size={15} aria-hidden="true" /> 流水
+					</button>
+					<button className={toolsTab === "keys" ? "tools-tab active" : "tools-tab"} type="button" onClick={() => openTools("keys")}>
+						<KeyRound size={15} aria-hidden="true" /> API Key
+					</button>
+					{session.identity.role === "admin" && (
+						<button className={toolsTab === "quota" ? "tools-tab active" : "tools-tab"} type="button" onClick={() => openTools("quota")}>
+							<Coins size={15} aria-hidden="true" /> 额度发放
 						</button>
-					</div>
-					<form className="quota-form" onSubmit={submitKey}>
-						<label>
-							<span>名称</span>
-							<input type="text" maxLength={50} value={keyForm.name} onChange={(event) => setKeyForm({ ...keyForm, name: event.target.value })} required />
-						</label>
-						<label>
-							<span>预算（额度单位）</span>
-							<input type="number" min="1" value={keyForm.remainQuota} onChange={(event) => setKeyForm({ ...keyForm, remainQuota: event.target.value })} required />
-						</label>
-						<label>
-							<span>有效期</span>
-							<select value={keyForm.expiryDays} onChange={(event) => setKeyForm({ ...keyForm, expiryDays: event.target.value })}>
-								<option value="7">7 天</option>
-								<option value="30">30 天</option>
-								<option value="90">90 天</option>
-							</select>
-						</label>
-						<label>
-							<span>模型</span>
-							<div className="model-checks">
-								{session.models.map((item) => (
-									<label key={item} className="model-check">
-										<input
-											type="checkbox"
-											checked={keyForm.models.includes(item)}
-											onChange={(event) =>
-												setKeyForm((current) => ({
-													...current,
-													models: event.target.checked
-														? [...current.models, item]
-														: current.models.filter((model) => model !== item),
-												}))
-											}
-										/>
-										<span>{item}</span>
-									</label>
-								))}
-							</div>
-						</label>
-						<button className="primary-action" type="submit">创建 Key</button>
-					</form>
-					{createdKey && (
-						<div className="one-time-key">
-							<strong>请立即保存，只显示一次：</strong>
-							<code>{createdKey}</code>
-						</div>
 					)}
-					{keysError && <p className="request-error" role="alert">{keysError}</p>}
-					<ul className="ledger-list">
-						{keys.map((item) => (
-							<li className="ledger-item" key={item.id}>
-								<span className="ledger-amount">{item.status === 1 ? "启用" : "停用"}</span>
-								<span className="ledger-copy">
-									<strong>{item.name || "未命名"} · {item.key}</strong>
-									<small>{item.model_limits || "全部模型"} · 剩余 {item.remain_quota}</small>
-									<small>有效期至 {new Date(item.expired_time * 1000).toLocaleString("zh-CN")}</small>
-								</span>
-								<button className="icon-action" type="button" onClick={() => deleteKey(item.id)} aria-label="删除 Key">
-									<Trash2 size={16} aria-hidden="true" />
-								</button>
-							</li>
-						))}
-					</ul>
 				</div>
-			)}
 
-			{quotaVisible && session.identity.role === "admin" && (
-				<div className="quota-panel" aria-live="polite">
-					<div className="ledger-head">
-						<strong>公益额度发放</strong>
-						<button className="icon-action" type="button" onClick={() => setQuotaVisible(false)} aria-label="关闭额度发放">
-							<X size={16} aria-hidden="true" />
-						</button>
-					</div>
-					<form className="quota-form" onSubmit={submitQuota}>
-						<label>
-							<span>目标用户 ID</span>
-							<input type="number" min="1" value={quotaForm.userId} onChange={(event) => setQuotaForm({ ...quotaForm, userId: event.target.value })} required />
-						</label>
-						<label>
-							<span>操作</span>
-							<select value={quotaForm.action} onChange={(event) => setQuotaForm({ ...quotaForm, action: event.target.value })}>
-								<option value="grant">发放（只允许正数）</option>
-								<option value="adjust">调整（可回退）</option>
-							</select>
-						</label>
-						<label>
-							<span>金额（额度单位）</span>
-							<input type="number" value={quotaForm.amount} onChange={(event) => setQuotaForm({ ...quotaForm, amount: event.target.value })} required />
-						</label>
-						<label>
-							<span>原因</span>
-							<input type="text" maxLength={200} value={quotaForm.reason} onChange={(event) => setQuotaForm({ ...quotaForm, reason: event.target.value })} required />
-						</label>
-						<label>
-							<span>线下收款凭证</span>
-							<input type="text" maxLength={128} value={quotaForm.reference} onChange={(event) => setQuotaForm({ ...quotaForm, reference: event.target.value })} required />
-						</label>
-						<button className="primary-action" type="submit">确认发放</button>
-					</form>
-					{quotaError && <p className="request-error" role="alert">{quotaError}</p>}
-					{quotaResult && <p className="quota-success">{quotaResult}</p>}
-				</div>
-			)}
+				{toolsTab === "ledger" && (
+					<section className="tool-section" aria-live="polite">
+						<h2>额度流水（{ledgerTotal}）</h2>
+						{ledgerEntries.length === 0 ? (
+							<p className="status-line">暂无流水记录</p>
+						) : (
+							<ul className="ledger-list">
+								{ledgerEntries.map((entry) => (
+									<li className="ledger-item" key={entry.id}>
+										<span className="ledger-amount">{entry.amount > 0 ? `+${entry.amount}` : entry.amount}</span>
+										<span className="ledger-copy">
+											<strong>{entry.entry_type} · {entry.funding_source}</strong>
+											<small>{entry.reason || "—"}</small>
+											<small>{entry.request_id ? `request ${entry.request_id}` : ""} · {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}</small>
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+					</section>
+				)}
 
-			{ledgerVisible && (
-				<div className="ledger-panel" aria-live="polite">
-					<div className="ledger-head">
-						<strong>额度流水（{ledgerTotal}）</strong>
-						<button className="icon-action" type="button" onClick={() => setLedgerVisible(false)} aria-label="关闭流水">
-							<X size={16} aria-hidden="true" />
-						</button>
-					</div>
-					{ledgerEntries.length === 0 ? (
-						<p className="status-line">暂无流水记录</p>
-					) : (
+				{toolsTab === "keys" && (
+					<section className="tool-section" aria-live="polite">
+						<h2>个人 API Key</h2>
+						<form className="quota-form" onSubmit={submitKey}>
+							<label>
+								<span>名称</span>
+								<input type="text" maxLength={50} value={keyForm.name} onChange={(event) => setKeyForm({ ...keyForm, name: event.target.value })} required />
+							</label>
+							<label>
+								<span>预算（额度单位）</span>
+								<input type="number" min="1" value={keyForm.remainQuota} onChange={(event) => setKeyForm({ ...keyForm, remainQuota: event.target.value })} required />
+							</label>
+							<label>
+								<span>有效期</span>
+								<select value={keyForm.expiryDays} onChange={(event) => setKeyForm({ ...keyForm, expiryDays: event.target.value })}>
+									<option value="7">7 天</option>
+									<option value="30">30 天</option>
+									<option value="90">90 天</option>
+								</select>
+							</label>
+							<label>
+								<span>模型</span>
+								<div className="model-checks">
+									{session.models.map((item) => (
+										<label key={item} className="model-check">
+											<input
+												type="checkbox"
+												checked={keyForm.models.includes(item)}
+												onChange={(event) =>
+													setKeyForm((current) => ({
+														...current,
+														models: event.target.checked
+															? [...current.models, item]
+															: current.models.filter((model) => model !== item),
+													}))
+												}
+											/>
+											<span>{item}</span>
+										</label>
+									))}
+								</div>
+							</label>
+							<button className="primary-action" type="submit">创建 Key</button>
+						</form>
+						{createdKey && (
+							<div className="one-time-key">
+								<strong>请立即保存，只显示一次：</strong>
+								<code>{createdKey}</code>
+							</div>
+						)}
+						{keysError && <p className="request-error" role="alert">{keysError}</p>}
 						<ul className="ledger-list">
-							{ledgerEntries.map((entry) => (
-								<li className="ledger-item" key={entry.id}>
-									<span className="ledger-amount">{entry.amount > 0 ? `+${entry.amount}` : entry.amount}</span>
+							{keys.map((item) => (
+								<li className="ledger-item" key={item.id}>
+									<span className="ledger-amount">{item.status === 1 ? "启用" : "停用"}</span>
 									<span className="ledger-copy">
-										<strong>{entry.entry_type} · {entry.funding_source}</strong>
-										<small>{entry.reason || "—"}</small>
-										<small>{entry.request_id ? `request ${entry.request_id}` : ""} · {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}</small>
+										<strong>{item.name || "未命名"} · {item.key}</strong>
+										<small>{item.model_limits || "全部模型"} · 剩余 {item.remain_quota}</small>
+										<small>有效期至 {new Date(item.expired_time * 1000).toLocaleString("zh-CN")}</small>
 									</span>
+									<button className="icon-action" type="button" onClick={() => deleteKey(item.id)} aria-label="删除 Key">
+										<Trash2 size={16} aria-hidden="true" />
+									</button>
 								</li>
 							))}
 						</ul>
-					)}
-				</div>
-			)}
+					</section>
+				)}
+
+				{toolsTab === "quota" && session.identity.role === "admin" && (
+					<section className="tool-section" aria-live="polite">
+						<h2>公益额度发放</h2>
+						<form className="quota-form" onSubmit={submitQuota}>
+							<label>
+								<span>目标用户 ID</span>
+								<input type="number" min="1" value={quotaForm.userId} onChange={(event) => setQuotaForm({ ...quotaForm, userId: event.target.value })} required />
+							</label>
+							<label>
+								<span>操作</span>
+								<select value={quotaForm.action} onChange={(event) => setQuotaForm({ ...quotaForm, action: event.target.value })}>
+									<option value="grant">发放（只允许正数）</option>
+									<option value="adjust">调整（可回退）</option>
+								</select>
+							</label>
+							<label>
+								<span>金额（额度单位）</span>
+								<input type="number" value={quotaForm.amount} onChange={(event) => setQuotaForm({ ...quotaForm, amount: event.target.value })} required />
+							</label>
+							<label>
+								<span>原因</span>
+								<input type="text" maxLength={200} value={quotaForm.reason} onChange={(event) => setQuotaForm({ ...quotaForm, reason: event.target.value })} required />
+							</label>
+							<label>
+								<span>线下收款凭证</span>
+								<input type="text" maxLength={128} value={quotaForm.reference} onChange={(event) => setQuotaForm({ ...quotaForm, reference: event.target.value })} required />
+							</label>
+							<button className="primary-action" type="submit">确认发放</button>
+						</form>
+						{quotaError && <p className="request-error" role="alert">{quotaError}</p>}
+						{quotaResult && <p className="quota-success">{quotaResult}</p>}
+					</section>
+				)}
+			</Drawer>
 
 			<div className="conversation" aria-live="polite">
             {messages.length === 0 && (
