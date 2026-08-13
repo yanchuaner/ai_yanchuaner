@@ -2,7 +2,7 @@
 // 会话保存的是角色卡快照，删除角色库条目不会影响已有会话。
 
 import { randomUUID } from "node:crypto";
-import { buildPersona, isValidPersona, isValidPersonaInput, type Persona } from "@/lib/personas";
+import { buildPersona, isValidPersona, isValidPersonaInput, type Persona, type PersonaInput } from "@/lib/personas";
 import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
 
 type PersonaStore = {
@@ -37,6 +37,17 @@ export async function createPersona(userId: number, input: unknown): Promise<Per
   if (store.personas.length >= MAX_PERSONAS_PER_USER) throw new Error("persona limit reached");
   const persona = buildPersona(`custom-${randomUUID()}`, input);
   store.personas.push(persona);
+  await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
+  return persona;
+}
+
+export async function updatePersona(userId: number, personaId: string, input: unknown): Promise<Persona> {
+  if (!isValidPersonaInput(input)) throw new Error("persona input is invalid");
+  const store = await readStore(userId);
+  const index = store.personas.findIndex((persona) => persona.id === personaId);
+  if (index < 0) throw new Error("persona not found");
+  const persona = buildPersona(personaId, input);
+  store.personas[index] = persona;
   await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
   return persona;
 }

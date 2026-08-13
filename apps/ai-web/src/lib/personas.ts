@@ -9,12 +9,14 @@ export type Persona = {
   id: string;
   name: string;
   avatar?: string;
+  cover?: string;
   description: string;
   firstMessage: string;
   style?: string;
   world?: string;
   scenario?: string;
   plot?: string;
+  examples?: string;
   tags?: string[];
 };
 
@@ -23,15 +25,21 @@ export type PersonaInput = Omit<Persona, "id">;
 const LIMITS = {
   name: 32,
   avatar: 32,
+  cover: 24,
   description: 4000,
   firstMessage: 2000,
   style: 600,
   world: 4000,
   scenario: 2000,
   plot: 4000,
+  examples: 4000,
   maxTags: 8,
   tag: 20,
 } as const;
+
+// 封面只允许使用设计系统内置的渐变令牌，避免用户输入任意 CSS。
+export const COVER_OPTIONS = ["aurora", "nebula", "ocean", "forest", "sunset", "galaxy"] as const;
+export type CoverToken = (typeof COVER_OPTIONS)[number];
 
 export function isValidPersonaInput(value: unknown): value is PersonaInput {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -49,10 +57,11 @@ export function isValidPersonaInput(value: unknown): value is PersonaInput {
   if (typeof candidate.firstMessage !== "string" || candidate.firstMessage.length > LIMITS.firstMessage) {
     return false;
   }
-  for (const key of ["avatar", "style", "world", "scenario", "plot"] as const) {
+  for (const key of ["avatar", "cover", "style", "world", "scenario", "plot", "examples"] as const) {
     const item = candidate[key];
     if (item !== undefined && (typeof item !== "string" || item.length > LIMITS[key])) return false;
   }
+  if (candidate.cover !== undefined && !COVER_OPTIONS.includes(candidate.cover as CoverToken)) return false;
   if (candidate.tags !== undefined) {
     if (!Array.isArray(candidate.tags) || candidate.tags.length > LIMITS.maxTags) return false;
     for (const tag of candidate.tags) {
@@ -82,15 +91,19 @@ export function buildPersona(id: string, input: PersonaInput): Persona {
     firstMessage: input.firstMessage.trim(),
   };
   const avatar = optionalText(input.avatar);
+  const cover = optionalText(input.cover);
   const style = optionalText(input.style);
   const world = optionalText(input.world);
   const scenario = optionalText(input.scenario);
   const plot = optionalText(input.plot);
+  const examples = optionalText(input.examples);
   if (avatar) persona.avatar = avatar;
+  if (cover) persona.cover = cover;
   if (style) persona.style = style;
   if (world) persona.world = world;
   if (scenario) persona.scenario = scenario;
   if (plot) persona.plot = plot;
+  if (examples) persona.examples = examples;
   if (tags.length > 0) persona.tags = tags;
   return persona;
 }
@@ -108,6 +121,7 @@ export function personaSystemPrompt(persona: Persona): string {
     section("当前场景", persona.scenario),
     section("故事线", persona.plot),
     section("说话风格", persona.style),
+    section("示例对话", persona.examples),
     "请用中文回复，保持角色一致，不要跳出设定，也不要替用户做决定。",
   ]
     .filter(Boolean)
@@ -119,6 +133,7 @@ export const PRESET_PERSONAS: Persona[] = [
     id: "preset-study-buddy",
     name: "燕中学伴",
     avatar: "📚",
+    cover: "aurora",
     description:
       "你是燕川中学的一名在校学生，熟悉校园生活、课程节奏和社团活动，性格真诚热心。你愿意和同学一起讨论学习、校园日常和成长中的烦恼，不端着架子。",
     firstMessage: "嗨，我是你的燕中学伴。今天想聊点什么？",
@@ -129,6 +144,7 @@ export const PRESET_PERSONAS: Persona[] = [
     id: "preset-teacher",
     name: "燕中老师",
     avatar: "🧑‍🏫",
+    cover: "ocean",
     description:
       "你是燕川中学一位耐心严谨的老师，擅长把复杂问题拆开讲清楚，会引导学生自己得出结论，而不是直接给答案。",
     firstMessage: "同学你好，有问题我们一步一步来。",
@@ -139,6 +155,7 @@ export const PRESET_PERSONAS: Persona[] = [
     id: "preset-star-traveler",
     name: "星河旅者",
     avatar: "✨",
+    cover: "galaxy",
     description:
       "你是一位游历星海的安静旅者，见过来自不同文明的风景，习惯用诗意的语言描述世界，适合陪伴和闲谈。",
     firstMessage: "欢迎来到我的星舰。今晚想看看哪颗星？",
@@ -146,12 +163,14 @@ export const PRESET_PERSONAS: Persona[] = [
     world: "人类已经走出太阳系，星海之间分布着安静的航站与无人深空。",
     scenario: "用户在星舰的观景舱里第一次见到你。",
     plot: "你们可以聊聊星空、旅途与故乡，也可以一起规划下一段航线。",
+    examples: "用户：今晚的星空有什么特别？\n星河旅者：有一颗彗星正经过织女星附近，天亮前都能看见。",
     tags: ["幻想", "陪伴"],
   },
   {
     id: "preset-elder",
     name: "长者",
     avatar: "🌿",
+    cover: "forest",
     description:
       "你是一位温和的长者，见惯了聚散起伏，擅长倾听，从人生经验出发给出建议，不代替对方做决定。",
     firstMessage: "坐吧，慢慢说。",

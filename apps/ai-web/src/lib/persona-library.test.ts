@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createPersona, deletePersona, listPersonas } from "./persona-library";
+import { createPersona, deletePersona, listPersonas, updatePersona } from "./persona-library";
 
 async function withDataDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "ai-web-personas-"));
@@ -43,5 +43,27 @@ test("personas are user-scoped, persisted and deletable", async () => {
     await deletePersona(7, created.id);
     assert.equal((await listPersonas(7)).length, 0);
     await assert.rejects(() => deletePersona(7, created.id), /not found/);
+  });
+});
+
+test("personas can be updated without changing their id or user scope", async () => {
+  await withDataDir(async () => {
+    const created = await createPersona(7, validInput);
+    const updated = await updatePersona(7, created.id, {
+      ...validInput,
+      name: "新向导",
+      cover: "aurora",
+      examples: "用户：你好\n向导：你好，欢迎登舰。",
+    });
+    assert.equal(updated.id, created.id);
+    assert.equal(updated.name, "新向导");
+    assert.equal(updated.cover, "aurora");
+
+    const list = await listPersonas(7);
+    assert.equal(list.length, 1);
+    assert.equal(list[0].name, "新向导");
+
+    await assert.rejects(() => updatePersona(8, created.id, validInput), /not found/);
+    await assert.rejects(() => updatePersona(7, created.id, { ...validInput, name: "" }), /input is invalid/);
   });
 });

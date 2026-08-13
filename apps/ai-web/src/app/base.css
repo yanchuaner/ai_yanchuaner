@@ -11,22 +11,61 @@ body {
   margin: 0;
   background-color: var(--bg);
   background-image:
-    radial-gradient(circle at 12% 16%, rgba(255, 255, 255, 0.18) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 78% 24%, rgba(103, 212, 232, 0.2) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 42% 82%, rgba(240, 198, 107, 0.16) 0 1px, transparent 1.5px);
-  background-size: 180px 180px, 240px 240px, 210px 210px;
+    radial-gradient(1100px 620px at 88% -8%, rgba(103, 212, 232, 0.13), transparent 62%),
+    radial-gradient(960px 560px at -8% 24%, rgba(245, 207, 125, 0.08), transparent 58%),
+    radial-gradient(900px 700px at 46% 118%, rgba(123, 45, 139, 0.13), transparent 62%),
+    radial-gradient(circle at 16% 32%, rgba(255, 255, 255, 0.16) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 18%, rgba(124, 227, 242, 0.2) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 38% 76%, rgba(245, 207, 125, 0.14) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 88% 64%, rgba(255, 255, 255, 0.1) 0 1px, transparent 1.5px);
+  background-size: auto, auto, auto, 210px 210px, 260px 260px, 230px 230px, 190px 190px;
   color: var(--text);
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
 a,
 select,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
 button,
 select {
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: rgba(124, 227, 242, 0.28);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(124, 227, 242, 0.24) transparent;
+}
+
+*::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(124, 227, 242, 0.24);
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
 }

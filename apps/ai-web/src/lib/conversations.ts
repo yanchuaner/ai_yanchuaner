@@ -26,6 +26,8 @@ export type StoredConversation = {
   updatedAt: number;
   mode: ChatMode;
   persona?: Persona;
+  pinned?: boolean;
+  archived?: boolean;
   messages: StoredMessage[];
 };
 
@@ -36,6 +38,9 @@ export type ConversationSummary = {
   messageCount: number;
   mode: ChatMode;
   personaName?: string;
+  personaId?: string;
+  pinned?: boolean;
+  archived?: boolean;
 };
 
 export type ConversationDetail = {
@@ -44,6 +49,8 @@ export type ConversationDetail = {
   updatedAt: number;
   mode: ChatMode;
   persona?: Persona;
+  pinned?: boolean;
+  archived?: boolean;
   messages: StoredMessage[];
 };
 
@@ -105,6 +112,8 @@ function normalizeConversation(raw: unknown): StoredConversation | null {
     updatedAt: candidate.updatedAt,
     mode: candidate.mode === "roleplay" ? "roleplay" : "chat",
     persona: isValidPersona(candidate.persona) ? candidate.persona : undefined,
+    pinned: candidate.pinned === true,
+    archived: candidate.archived === true,
     messages: candidate.messages.filter(isValidStoredMessage),
   };
 }
@@ -135,6 +144,9 @@ function summarize(conversation: StoredConversation): ConversationSummary {
     messageCount: conversation.messages.length,
     mode: conversation.mode,
     personaName: conversation.persona?.name,
+    personaId: conversation.persona?.id,
+    pinned: conversation.pinned,
+    archived: conversation.archived,
   };
 }
 
@@ -142,8 +154,11 @@ export async function listConversations(userId: number): Promise<ConversationSum
   const store = await readStore(userId);
   return store.conversations
     .slice()
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, 50)
+    .sort((a, b) => {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+      return b.updatedAt - a.updatedAt;
+    })
+    .slice(0, 100)
     .map(summarize);
 }
 
@@ -164,6 +179,8 @@ export async function getConversationDetail(userId: number, conversationId: stri
     updatedAt: conversation.updatedAt,
     mode: conversation.mode,
     persona: conversation.persona,
+    pinned: conversation.pinned,
+    archived: conversation.archived,
     messages: conversation.messages.slice(),
   };
 }
@@ -221,6 +238,34 @@ export async function appendMessage(
   if (message.role === "user" && conversation.title === DEFAULT_TITLE) {
     conversation.title = message.content.replace(/\s+/g, " ").trim().slice(0, 30);
   }
+  conversation.updatedAt = Date.now();
+  await writeStore(userId, store);
+  return summarize(conversation);
+}
+
+export type ConversationUpdate = {
+  title?: string;
+  pinned?: boolean;
+  archived?: boolean;
+};
+
+export async function updateConversation(
+  userId: number,
+  conversationId: string,
+  patch: ConversationUpdate,
+): Promise<ConversationSummary> {
+  if (
+    patch.title !== undefined &&
+    (typeof patch.title !== "string" || patch.title.trim().length === 0 || patch.title.length > 60)
+  ) {
+    throw new Error("title is invalid");
+  }
+  const store = await readStore(userId);
+  const conversation = store.conversations.find((item) => item.id === conversationId);
+  if (!conversation) throw new Error("conversation not found");
+  if (patch.title !== undefined) conversation.title = patch.title.trim();
+  if (patch.pinned !== undefined) conversation.pinned = patch.pinned;
+  if (patch.archived !== undefined) conversation.archived = patch.archived;
   conversation.updatedAt = Date.now();
   await writeStore(userId, store);
   return summarize(conversation);
