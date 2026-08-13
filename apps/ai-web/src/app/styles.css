@@ -66,6 +66,10 @@
 .ledger-copy { display: grid; gap: 2px; min-width: 0; }
 .ledger-copy strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ledger-copy small { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tools-tabs { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; padding-bottom: 10px; }
+.tools-tab { align-items: center; background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--text-muted); display: inline-flex; font-size: 12px; gap: 6px; min-height: 34px; padding: 0 12px; }
+.tools-tab.active { background: var(--surface-muted); border-color: var(--brand); color: var(--brand); }
+.tool-section h2 { font-size: 14px; margin: 0 0 14px; }
 .quota-panel { border-bottom: 1px solid var(--line); margin: 0 auto; max-width: 860px; padding: 12px 24px 16px; width: 100%; }
 .quota-form { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .quota-form label { display: grid; gap: 5px; }
