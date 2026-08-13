@@ -36,6 +36,9 @@ type ChatStageProps = {
   knowledgeEnabled: boolean;
   onKnowledgeChange: (enabled: boolean) => void;
   lastKnowledgeHits: number | null;
+  memorySummary: string | null;
+  memoryState: "idle" | "generating" | "error";
+  onClearMemory: () => void;
   pending: boolean;
   error: string;
   prompt: string;
@@ -65,6 +68,9 @@ export function ChatStage({
   knowledgeEnabled,
   onKnowledgeChange,
   lastKnowledgeHits,
+  memorySummary,
+  memoryState,
+  onClearMemory,
   pending,
   error,
   prompt,
@@ -312,6 +318,25 @@ export function ChatStage({
               </label>
               {lastKnowledgeHits !== null && (
                 <p className={styles.knowledgeHits}>上次回答检索到 {lastKnowledgeHits} 个资料片段</p>
+              )}
+            </section>
+            <section className={styles.contextSection}>
+              <h3>长期记忆</h3>
+              {memoryState === "generating" ? (
+                <p className={styles.knowledgeHits}>正在整理这段对话的记忆…</p>
+              ) : memoryState === "error" ? (
+                <p className={styles.knowledgeHits}>记忆整理失败，下轮对话会重试。</p>
+              ) : memorySummary ? (
+                <>
+                  <p className={styles.memorySummary}>
+                    {memorySummary.length > 220 ? `${memorySummary.slice(0, 220)}…` : memorySummary}
+                  </p>
+                  <button className={styles.clearMemory} type="button" onClick={onClearMemory}>
+                    清除这段记忆
+                  </button>
+                </>
+              ) : (
+                <p className={styles.knowledgeHits}>对话足够长后会自动沉淀为角色记忆。</p>
               )}
             </section>
             <section className={styles.contextSection}>

@@ -5,11 +5,15 @@ import path from "node:path";
 import test from "node:test";
 import {
   addKnowledgeDocument,
+  addUserKnowledgeDocument,
   deleteKnowledgeDocument,
   deletePersonaKnowledge,
+  deleteUserKnowledge,
   getPersonaKnowledgeSummary,
+  getUserKnowledgeSummary,
   listDocumentChunks,
   searchPersonaKnowledge,
+  searchUserKnowledge,
 } from "./knowledge-library";
 
 async function withDataDir(run: () => Promise<void>) {
@@ -115,5 +119,32 @@ test("deleting a persona removes its knowledge base", async () => {
     assert.equal(summary.documents.length, 0);
     assert.equal(summary.chunkCount, 0);
     await assert.rejects(() => deleteKnowledgeDocument(9, "doc-missing"), /not found/);
+  });
+});
+
+test("user knowledge is user-scoped and independent from persona knowledge", async () => {
+  await withDataDir(async () => {
+    await addUserKnowledgeDocument(
+      7,
+      { name: "我的经历", text: "我从小在海边长大，有一段难忘的往事，喜欢收集贝壳。" },
+      "BAAI/bge-m3",
+      fakeEmbedder,
+    );
+    const summary = await getUserKnowledgeSummary(7);
+    assert.equal(summary.knowledgeBase?.scope, "user");
+    assert.equal(summary.knowledgeBase?.name, "我的资料");
+    assert.equal(summary.documents.length, 1);
+    assert.equal(summary.chunkCount, 1);
+    assert.equal((await getUserKnowledgeSummary(8)).documents.length, 0);
+
+    const hits = await searchUserKnowledge(7, [0, 0, 1], 2, 0.1);
+    assert.ok(hits.length >= 1);
+    assert.match(hits[0].text, /海边/);
+
+    const personaSummary = await getPersonaKnowledgeSummary(7, "any-persona");
+    assert.equal(personaSummary.documents.length, 0);
+
+    await deleteUserKnowledge(7);
+    assert.equal((await getUserKnowledgeSummary(7)).documents.length, 0);
   });
 });

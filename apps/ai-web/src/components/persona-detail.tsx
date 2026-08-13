@@ -1,8 +1,8 @@
 "use client";
 
-import { CalendarClock, Copy, FileText, Pencil, Play, Star, Trash2, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { CalendarClock, Copy, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { Drawer } from "@/components/drawer";
+import { KnowledgePanel } from "@/components/knowledge-panel";
 import { PersonaForm } from "@/components/persona-form";
 import { type Persona, type PersonaInput } from "@/lib/personas";
 import type { ConversationSummary, PersonaKnowledge } from "@/lib/types";
@@ -51,43 +51,7 @@ export function PersonaDetail({
   onDelete,
   onDuplicate,
 }: PersonaDetailProps) {
-  const [knowledgeText, setKnowledgeText] = useState("");
-  const [knowledgeName, setKnowledgeName] = useState("");
-  const [knowledgeError, setKnowledgeError] = useState("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const title = mode === "create" ? "新建角色" : mode === "edit" ? `编辑「${persona?.name}」` : persona?.name ?? "角色详情";
-
-  async function submitKnowledge() {
-    const text = knowledgeText.trim();
-    if (!text) return;
-    setKnowledgeError("");
-    try {
-      await onAddKnowledgeText(knowledgeName.trim() || "粘贴资料", text);
-      setKnowledgeText("");
-      setKnowledgeName("");
-    } catch (reason) {
-      setKnowledgeError(reason instanceof Error ? reason.message : "保存资料失败。");
-    }
-  }
-
-  async function uploadKnowledge(file: File | undefined) {
-    if (!file) return;
-    setKnowledgeError("");
-    try {
-      await onAddKnowledgeFile(file);
-    } catch (reason) {
-      setKnowledgeError(reason instanceof Error ? reason.message : "上传资料失败。");
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
-  function confirmDeleteDocument(documentId: string) {
-    if (!window.confirm("删除这份资料？对话中将无法再检索到它。")) return;
-    void onDeleteKnowledgeDocument(documentId).catch((reason: unknown) => {
-      setKnowledgeError(reason instanceof Error ? reason.message : "删除资料失败。");
-    });
-  }
 
   return (
     <Drawer open={Boolean(persona) || mode === "create"} title={title} onClose={onClose}>
@@ -159,87 +123,16 @@ export function PersonaDetail({
             {knowledge && (
               <section className={styles.section}>
                 <h4>资料库</h4>
-                <p className={styles.hint}>
-                  上传剧情、背景与经历，对话时自动检索相关片段。
-                  {knowledge.knowledgeBase?.embeddingModel
-                    ? ` 当前嵌入模型：${knowledge.knowledgeBase.embeddingModel}`
-                    : ""}
-                </p>
-                <div className={styles.knowledgeToolbar}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".txt,.md,.markdown"
-                    hidden
-                    onChange={(event) => void uploadKnowledge(event.target.files?.[0])}
-                  />
-                  <button
-                    className={styles.fileButton}
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={knowledgeBusy}
-                  >
-                    <Upload size={15} aria-hidden="true" /> 上传文件
-                  </button>
-                  <span className={styles.fileHint}>txt / Markdown，单份不超过 1 MB</span>
-                </div>
-                <textarea
-                  className={styles.knowledgeTextarea}
-                  rows={4}
-                  maxLength={200000}
-                  value={knowledgeText}
-                  onChange={(event) => setKnowledgeText(event.target.value)}
-                  placeholder="或直接粘贴剧情、背景、过往经历…"
+                <KnowledgePanel
+                  documents={knowledge.documents}
+                  chunkCount={knowledge.chunkCount}
+                  embeddingModel={knowledge.knowledgeBase?.embeddingModel}
+                  busy={knowledgeBusy}
+                  emptyText="还没有资料，添加后会在这里显示。"
+                  onAddText={onAddKnowledgeText}
+                  onAddFile={onAddKnowledgeFile}
+                  onDelete={onDeleteKnowledgeDocument}
                 />
-                <div className={styles.knowledgeActions}>
-                  <input
-                    className={styles.knowledgeName}
-                    type="text"
-                    maxLength={80}
-                    value={knowledgeName}
-                    onChange={(event) => setKnowledgeName(event.target.value)}
-                    placeholder="资料名称（可选）"
-                  />
-                  <button
-                    className={styles.addButton}
-                    type="button"
-                    disabled={!knowledgeText.trim() || knowledgeBusy}
-                    onClick={() => void submitKnowledge()}
-                  >
-                    {knowledgeBusy ? "处理中…" : "添加资料"}
-                  </button>
-                </div>
-                {knowledgeError && (
-                  <p className={styles.knowledgeError} role="alert">
-                    {knowledgeError}
-                  </p>
-                )}
-                {knowledge.documents.length === 0 ? (
-                  <p className={styles.muted}>还没有资料，添加后会在这里显示。</p>
-                ) : (
-                  <ul className={styles.knowledgeList}>
-                    {knowledge.documents.map((document) => (
-                      <li key={document.id}>
-                        <FileText size={16} aria-hidden="true" />
-                        <span>
-                          <strong>{document.name}</strong>
-                          <small>
-                            {document.chunkCount} 个片段 · {document.status === "ready" ? "已就绪" : "异常"}
-                          </small>
-                        </span>
-                        <button
-                          className={styles.knowledgeDelete}
-                          type="button"
-                          onClick={() => confirmDeleteDocument(document.id)}
-                          aria-label={`删除资料 ${document.name}`}
-                          title="删除资料"
-                        >
-                          <Trash2 size={15} aria-hidden="true" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </section>
             )}
 

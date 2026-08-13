@@ -314,6 +314,39 @@
   color: var(--brand);
 }
 
+.knowledgeRow {
+  align-items: center;
+  display: flex;
+  gap: 13px;
+}
+
+.knowledgeIcon {
+  align-items: center;
+  background: var(--brand-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  color: var(--brand);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.knowledgeRow > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.knowledgeRow strong {
+  font-size: 14px;
+}
+
+.knowledgeRow small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 @media (max-width: 640px) {
   .page {
     padding: 24px 16px 92px;

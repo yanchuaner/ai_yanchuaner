@@ -3,7 +3,12 @@ import { forwardChatCompletion, parseAiChatRequest } from "@/lib/chat";
 import { requestEmbeddings } from "@/lib/embedding";
 import { resolveEmbeddingModel } from "@/lib/knowledge-embedding";
 import { getConversationDetail } from "@/lib/conversations";
-import { searchPersonaKnowledge, type KnowledgeHit } from "@/lib/knowledge-library";
+import {
+  searchPersonaKnowledge,
+  searchUserKnowledge,
+  type KnowledgeHit,
+} from "@/lib/knowledge-library";
+import { getPersonaMemory } from "@/lib/memory-library";
 import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
 
 export type ChatHandlerConfig = {
@@ -46,26 +51,44 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
       const persona = detail.persona;
       const query = [...parsed.messages].reverse().find((message) => message.role === "user")?.content;
       if (persona && query) {
+        const injections: { role: "system"; content: string }[] = [];
+        const memory = await getPersonaMemory(session.subject.userId, persona.id).catch(() => null);
+        if (memory?.summary) {
+          injections.push({ role: "system", content: `【角色长期记忆】\n${memory.summary}` });
+        }
         const embeddingModel = resolveEmbeddingModel(session);
-        if (!embeddingModel) throw new Error("embedding model unavailable");
-        const embedded = await requestEmbeddings(
-          config.yanCoreApiBaseUrl,
-          session.credential.accessKey,
-          embeddingModel,
-          [query],
-          fetcher,
-        );
-        const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
-        const hits = await searchPersonaKnowledge(
-          session.subject.userId,
-          persona.id,
-          embedded.vectors[0],
-          4,
-          Number.isFinite(threshold) ? threshold : 0.3,
-        );
-        if (hits.length > 0) {
-          parsed.messages.unshift({ role: "system", content: buildKnowledgePrompt(hits) });
-          knowledgeHits = hits.length;
+        if (embeddingModel) {
+          const embedded = await requestEmbeddings(
+            config.yanCoreApiBaseUrl,
+            session.credential.accessKey,
+            embeddingModel,
+            [query],
+            fetcher,
+          );
+          const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
+          const [personaHits, userHits] = await Promise.all([
+            searchPersonaKnowledge(
+              session.subject.userId,
+              persona.id,
+              embedded.vectors[0],
+              4,
+              Number.isFinite(threshold) ? threshold : 0.3,
+            ),
+            searchUserKnowledge(
+              session.subject.userId,
+              embedded.vectors[0],
+              4,
+              Number.isFinite(threshold) ? threshold : 0.3,
+            ),
+          ]);
+          const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
+          if (hits.length > 0) {
+            injections.push({ role: "system", content: buildKnowledgePrompt(hits) });
+            knowledgeHits = hits.length;
+          }
+        }
+        for (const injection of injections.reverse()) {
+          parsed.messages.unshift(injection);
         }
       }
     } catch {
@@ -104,4 +127,13 @@ function buildKnowledgePrompt(hits: KnowledgeHit[]): string {
     used += block.length;
   }
   return lines.join("\n\n");
+}
+
+function dedupeHits(hits: KnowledgeHit[]): KnowledgeHit[] {
+  const seen = new Set<string>();
+  return hits.filter((hit) => {
+    if (seen.has(hit.text)) return false;
+    seen.add(hit.text);
+    return true;
+  });
 }

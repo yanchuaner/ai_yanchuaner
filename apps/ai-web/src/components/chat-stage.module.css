@@ -511,6 +511,28 @@
   margin-top: 7px;
 }
 
+.memorySummary {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.clearMemory {
+  background: transparent;
+  border: 1px solid rgba(255, 143, 143, 0.45);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 11px;
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.clearMemory:hover {
+  background: rgba(255, 143, 143, 0.08);
+}
+
 @media (max-width: 900px) {
   .context {
     bottom: 0;

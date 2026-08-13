@@ -18,6 +18,7 @@ import { PersonaDetail } from "@/components/persona-detail";
 import { PersonaLibrary } from "@/components/persona-library";
 import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
+import { UserKnowledgeDrawer } from "@/components/user-knowledge";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
 import type { AppView, ChatMessage, ConversationSummary, PersonaKnowledge } from "@/lib/types";
 
@@ -84,6 +85,11 @@ export default function HomePage() {
   const [knowledgeBusy, setKnowledgeBusy] = useState(false);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(true);
   const [lastKnowledgeHits, setLastKnowledgeHits] = useState<number | null>(null);
+  const [userKnowledge, setUserKnowledge] = useState<PersonaKnowledge | null>(null);
+  const [userKnowledgeOpen, setUserKnowledgeOpen] = useState(false);
+  const [userKnowledgeBusy, setUserKnowledgeBusy] = useState(false);
+  const [activeMemory, setActiveMemory] = useState<string | null>(null);
+  const [memoryState, setMemoryState] = useState<"idle" | "generating" | "error">("idle");
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
@@ -138,6 +144,20 @@ export default function HomePage() {
       if (response.ok) {
         const body = await response.json();
         setPersonas(Array.isArray(body.personas) ? body.personas : []);
+      }
+    } catch {}
+  }
+
+  async function loadUserKnowledge() {
+    try {
+      const response = await fetch("/api/me/knowledge", { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setUserKnowledge({
+          knowledgeBase: body.knowledgeBase ?? null,
+          documents: Array.isArray(body.documents) ? body.documents : [],
+          chunkCount: typeof body.chunkCount === "number" ? body.chunkCount : 0,
+        });
       }
     } catch {}
   }
@@ -210,6 +230,86 @@ export default function HomePage() {
     setConversationId(id);
     setMessages(detailResponse.messages);
     setActivePersona(detailResponse.persona ?? undefined);
+    setLastKnowledgeHits(null);
+    void loadMemoryForConversation(id);
+  }
+
+  async function loadMemoryForConversation(id: string) {
+    try {
+      const response = await fetch(`/api/chat/conversations/${id}/memory`, { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setActiveMemory(body.memory?.summary ?? null);
+        setMemoryState("idle");
+      }
+    } catch {}
+  }
+
+  function openUserKnowledgeDrawer() {
+    setUserKnowledgeOpen(true);
+    void loadUserKnowledge();
+  }
+
+  async function addUserKnowledgeText(name: string, text: string) {
+    setUserKnowledgeBusy(true);
+    try {
+      const response = await fetch("/api/me/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, text, source: "paste" }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "保存资料失败。");
+      await loadUserKnowledge();
+    } finally {
+      setUserKnowledgeBusy(false);
+    }
+  }
+
+  async function addUserKnowledgeFile(file: File) {
+    setUserKnowledgeBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/me/knowledge", { method: "POST", body: form });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "上传资料失败。");
+      await loadUserKnowledge();
+    } finally {
+      setUserKnowledgeBusy(false);
+    }
+  }
+
+  async function deleteUserKnowledgeDocument(documentId: string) {
+    const response = await fetch(`/api/me/knowledge/documents/${documentId}`, { method: "DELETE" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || "删除资料失败。");
+    }
+    await loadUserKnowledge();
+  }
+
+  async function triggerMemory(conversationId: string) {
+    setMemoryState("generating");
+    try {
+      const response = await fetch(`/api/chat/conversations/${conversationId}/memory`, { method: "POST" });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        setMemoryState("error");
+        return;
+      }
+      if (body?.updated && body.memory?.summary) setActiveMemory(body.memory.summary);
+      setMemoryState("idle");
+    } catch {
+      setMemoryState("error");
+    }
+  }
+
+  async function clearMemory() {
+    if (!conversationId) return;
+    await fetch(`/api/chat/conversations/${conversationId}/memory`, { method: "DELETE" });
+    setActiveMemory(null);
+    setMemoryState("idle");
   }
 
   function navigate(nextView: AppView) {
@@ -484,6 +584,7 @@ export default function HomePage() {
         void loadConversations();
         void loadPersonas();
         void loadFavorites();
+        void loadUserKnowledge();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -624,6 +725,10 @@ export default function HomePage() {
       });
       await loadBalance();
       await loadConversations();
+      const completedCount = messages.length + 2;
+      if (activeMode === "roleplay" && completedCount >= 15 && completedCount % 15 === 0) {
+        void triggerMemory(targetConversationId);
+      }
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "模型请求失败。");
       setMessages((current) =>
@@ -733,6 +838,8 @@ export default function HomePage() {
                 presets={PRESET_PERSONAS}
                 library={personas}
                 favoriteIds={favoriteIds}
+                userKnowledge={userKnowledge}
+                onOpenUserKnowledge={openUserKnowledgeDrawer}
                 onOpenConversation={(id) => void openConversation(id)}
                 onOpenChat={() => navigate("chat")}
                 onNewChat={openNewConversationSetup}
@@ -773,6 +880,9 @@ export default function HomePage() {
                 knowledgeEnabled={knowledgeEnabled}
                 onKnowledgeChange={setKnowledgeEnabled}
                 lastKnowledgeHits={lastKnowledgeHits}
+                memorySummary={activeMemory}
+                memoryState={memoryState}
+                onClearMemory={() => void clearMemory()}
                 pending={pending}
                 error={error}
                 prompt={prompt}
@@ -1014,6 +1124,16 @@ export default function HomePage() {
         onStartChat={startPlainConversation}
         onStartRoleplay={startRoleplayConversation}
         onDeletePersona={deleteLibraryPersona}
+      />
+
+      <UserKnowledgeDrawer
+        open={userKnowledgeOpen}
+        knowledge={userKnowledge}
+        busy={userKnowledgeBusy}
+        onClose={() => setUserKnowledgeOpen(false)}
+        onAddText={addUserKnowledgeText}
+        onAddFile={addUserKnowledgeFile}
+        onDelete={deleteUserKnowledgeDocument}
       />
 
       {detail.open && (
