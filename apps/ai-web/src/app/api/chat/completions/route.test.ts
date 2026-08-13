@@ -232,7 +232,7 @@ test("chat route schedules group speakers then streams each member independently
       },
       userRole: {
         name: "转学生",
-        description: "刚转来高三（2）班的新同学。",
+        description: "刚转来航天班的新同学。",
       },
     });
     await addKnowledgeDocument(
