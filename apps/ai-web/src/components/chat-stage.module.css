@@ -405,6 +405,30 @@
   margin-top: 8px;
 }
 
+.speakButton {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 11px;
+  gap: 5px;
+  margin-top: 8px;
+  min-height: 26px;
+  padding: 0 9px;
+}
+
+.speakButton:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--brand);
+}
+
+.speakButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .composerWrap {
   background: linear-gradient(transparent, rgba(6, 10, 18, 0.86) 26%);
   border-top: 1px solid var(--line);
@@ -446,13 +470,47 @@
 }
 
 .send,
-.stop {
+.stop,
+.micButton {
   align-items: center;
   border-radius: var(--radius-sm);
   display: inline-flex;
   height: 40px;
   justify-content: center;
   width: 40px;
+}
+
+.micButton {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+}
+
+.micButton:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--brand);
+}
+
+.micButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.micRecording {
+  background: rgba(255, 143, 143, 0.12);
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: micPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes micPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 143, 143, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 143, 143, 0);
+  }
 }
 
 .send {

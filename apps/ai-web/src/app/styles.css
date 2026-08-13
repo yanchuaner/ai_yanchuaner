@@ -313,6 +313,24 @@
   margin: 0 0 14px;
 }
 
+.tool-sub {
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  margin: 18px 0 10px;
+}
+
+.tool-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+.tool-full {
+  grid-column: 1 / -1;
+}
+
 .ledger-list {
   list-style: none;
   margin: 0;

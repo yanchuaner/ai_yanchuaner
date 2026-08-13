@@ -4,6 +4,7 @@ import {
   Coins,
   KeyRound,
   LogIn,
+  Mic,
   PanelLeft,
   ReceiptText,
   ShieldCheck,
@@ -64,6 +65,12 @@ type ApiKeyItem = {
   created_time: number;
 };
 
+type VoiceSettingsView = {
+  asr: { baseUrl: string; model: string } | null;
+  tts: { baseUrl: string; model: string } | null;
+  updatedAt: number;
+};
+
 type DetailState =
   | { open: false; persona?: undefined; mode?: never }
   | { open: true; persona?: Persona; mode: "view" | "edit" | "create" };
@@ -107,7 +114,20 @@ export default function HomePage() {
   const [createdKey, setCreatedKey] = useState("");
   const [keysError, setKeysError] = useState("");
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota">("ledger");
+  const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota" | "voice">("ledger");
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettingsView | null>(null);
+  const [voiceForm, setVoiceForm] = useState({
+    asrBaseUrl: "",
+    asrModel: "",
+    asrKey: "",
+    ttsBaseUrl: "",
+    ttsModel: "",
+    ttsKey: "",
+  });
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceResult, setVoiceResult] = useState("");
+  const [voiceError, setVoiceError] = useState("");
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -226,11 +246,153 @@ export default function HomePage() {
     } catch {}
   }
 
-  async function openTools(tab: "ledger" | "keys" | "quota") {
+  async function openTools(tab: "ledger" | "keys" | "quota" | "voice") {
     setToolsTab(tab);
     setToolsOpen(true);
     if (tab === "ledger") await loadLedger();
     if (tab === "keys") await loadKeys();
+    if (tab === "voice") await loadVoiceSettings();
+  }
+
+  async function loadVoiceSettings() {
+    try {
+      const response = await fetch("/api/me/voice", { cache: "no-store" });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      if (!response.ok) return;
+      const body = await response.json();
+      const settings = body.settings as VoiceSettingsView;
+      setVoiceSettings(settings);
+      setVoiceForm({
+        asrBaseUrl: settings.asr?.baseUrl ?? "https://api.siliconflow.cn/v1",
+        asrModel: settings.asr?.model ?? "FunAudioLLM/SenseVoiceSmall",
+        asrKey: "",
+        ttsBaseUrl: settings.tts?.baseUrl ?? "https://api.siliconflow.cn/v1",
+        ttsModel: settings.tts?.model ?? "FunAudioLLM/CosyVoice2-0.5B",
+        ttsKey: "",
+      });
+    } catch {}
+  }
+
+  async function saveVoiceSettings() {
+    setVoiceBusy(true);
+    setVoiceError("");
+    setVoiceResult("");
+    const payload: { asr?: unknown; tts?: unknown } = {};
+    if (voiceForm.asrBaseUrl.trim() || voiceForm.asrModel.trim() || voiceForm.asrKey) {
+      payload.asr = {
+        baseUrl: voiceForm.asrBaseUrl.trim(),
+        model: voiceForm.asrModel.trim(),
+        apiKey: voiceForm.asrKey || undefined,
+      };
+    }
+    if (voiceForm.ttsBaseUrl.trim() || voiceForm.ttsModel.trim() || voiceForm.ttsKey) {
+      payload.tts = {
+        baseUrl: voiceForm.ttsBaseUrl.trim(),
+        model: voiceForm.ttsModel.trim(),
+        apiKey: voiceForm.ttsKey || undefined,
+      };
+    }
+    try {
+      const response = await fetch("/api/me/voice", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "保存语音设置失败。");
+      setVoiceSettings(body.settings);
+      setVoiceResult("语音设置已保存。");
+      setVoiceForm((current) => ({ ...current, asrKey: "", ttsKey: "" }));
+    } catch (reason) {
+      setVoiceError(reason instanceof Error ? reason.message : "保存语音设置失败。");
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
+  async function clearVoiceSection(section: "asr" | "tts") {
+    setVoiceBusy(true);
+    setVoiceError("");
+    setVoiceResult("");
+    try {
+      const response = await fetch("/api/me/voice", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [section]: null }),
+      });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "清除失败。");
+      setVoiceSettings(body.settings);
+      setVoiceResult("语音设置已清除。");
+      setVoiceForm((current) => ({
+        ...current,
+        ...(section === "asr"
+          ? { asrBaseUrl: "", asrModel: "", asrKey: "" }
+          : { ttsBaseUrl: "", ttsModel: "", ttsKey: "" }),
+      }));
+    } catch (reason) {
+      setVoiceError(reason instanceof Error ? reason.message : "清除失败。");
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
+  async function transcribeVoice(file: File): Promise<string> {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch("/api/me/voice/asr", { method: "POST", body: form });
+    if (response.status === 401) {
+      handleSessionExpired();
+      throw new Error("登录会话已失效，请重新登录。");
+    }
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(body?.error || "语音转文字失败。");
+    return body.text;
+  }
+
+  async function speakVoice(messageId: string, text: string) {
+    setSpeakingId(messageId);
+    try {
+      const response = await fetch("/api/me/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || "语音朗读失败。");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setSpeakingId(null);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setSpeakingId(null);
+      };
+      await audio.play();
+    } catch (reason) {
+      setSpeakingId(null);
+      setError(reason instanceof Error ? reason.message : "语音朗读失败。");
+    }
   }
 
   async function toggleFavorite(personaId: string) {
@@ -677,6 +839,7 @@ export default function HomePage() {
         void loadPersonas();
         void loadFavorites();
         void loadUserKnowledge();
+        void loadVoiceSettings();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -993,6 +1156,11 @@ export default function HomePage() {
                 onNewChat={openNewConversationSetup}
                 onLogout={() => void logout()}
                 onOpenTools={() => openTools("ledger")}
+                voiceAsrEnabled={Boolean(voiceSettings?.asr)}
+                voiceTtsEnabled={Boolean(voiceSettings?.tts)}
+                speakingId={speakingId}
+                onAsr={transcribeVoice}
+                onSpeak={speakVoice}
               />
             )}
           </section>
@@ -1016,14 +1184,21 @@ export default function HomePage() {
             <KeyRound size={15} aria-hidden="true" /> API Key
           </button>
           {session.status === "authenticated" && session.identity.role === "admin" && (
-            <button
-              className={toolsTab === "quota" ? "tools-tab active" : "tools-tab"}
+          <button
+            className={toolsTab === "quota" ? "tools-tab active" : "tools-tab"}
               type="button"
               onClick={() => openTools("quota")}
             >
               <Coins size={15} aria-hidden="true" /> 额度发放
             </button>
           )}
+          <button
+            className={toolsTab === "voice" ? "tools-tab active" : "tools-tab"}
+            type="button"
+            onClick={() => openTools("voice")}
+          >
+            <Mic size={15} aria-hidden="true" /> 语音
+          </button>
         </div>
 
         {toolsTab === "ledger" && (
@@ -1211,6 +1386,102 @@ export default function HomePage() {
               </p>
             )}
             {quotaResult && <p className="quota-success">{quotaResult}</p>}
+          </section>
+        )}
+
+        {toolsTab === "voice" && (
+          <section className="tool-section" aria-live="polite">
+            <h2>语音设置</h2>
+            <p className="tool-hint">
+              使用你自己的 OpenAI 兼容 ASR / TTS 服务。API Key 加密保存，只用于语音请求，不会回显。
+            </p>
+
+            <h3 className="tool-sub">语音输入（ASR）</h3>
+            <div className="quota-form">
+              <label>
+                <span>服务地址</span>
+                <input
+                  type="text"
+                  value={voiceForm.asrBaseUrl}
+                  onChange={(event) => setVoiceForm({ ...voiceForm, asrBaseUrl: event.target.value })}
+                  placeholder="https://api.siliconflow.cn/v1"
+                />
+              </label>
+              <label>
+                <span>模型</span>
+                <input
+                  type="text"
+                  value={voiceForm.asrModel}
+                  onChange={(event) => setVoiceForm({ ...voiceForm, asrModel: event.target.value })}
+                  placeholder="FunAudioLLM/SenseVoiceSmall"
+                />
+              </label>
+              <label className="tool-full">
+                <span>API Key（留空保持不变）</span>
+                <input
+                  type="password"
+                  value={voiceForm.asrKey}
+                  onChange={(event) => setVoiceForm({ ...voiceForm, asrKey: event.target.value })}
+                  placeholder="sk-…"
+                />
+              </label>
+            </div>
+            {voiceSettings?.asr && (
+              <button className="ghost-action" type="button" onClick={() => void clearVoiceSection("asr")} disabled={voiceBusy}>
+                清除语音输入配置
+              </button>
+            )}
+
+            <h3 className="tool-sub">语音朗读（TTS）</h3>
+            <div className="quota-form">
+              <label>
+                <span>服务地址</span>
+                <input
+                  type="text"
+                  value={voiceForm.ttsBaseUrl}
+                  onChange={(event) => setVoiceForm({ ...voiceForm, ttsBaseUrl: event.target.value })}
+                  placeholder="https://api.siliconflow.cn/v1"
+                />
+              </label>
+              <label>
+                <span>模型</span>
+                <input
+                  type="text"
+                  value={voiceForm.ttsModel}
+                  onChange={(event) => setVoiceForm({ ...voiceForm, ttsModel: event.target.value })}
+                  placeholder="FunAudioLLM/CosyVoice2-0.5B"
+                />
+              </label>
+              <label className="tool-full">
+                <span>API Key（留空保持不变）</span>
+                <input
+                  type="password"
+                  value={voiceForm.ttsKey}
+                  onChange={(event) => setVoiceForm({ ...voiceForm, ttsKey: event.target.value })}
+                  placeholder="sk-…"
+                />
+              </label>
+            </div>
+            {voiceSettings?.tts && (
+              <button className="ghost-action" type="button" onClick={() => void clearVoiceSection("tts")} disabled={voiceBusy}>
+                清除语音朗读配置
+              </button>
+            )}
+
+            <button className="primary-action" type="button" onClick={() => void saveVoiceSettings()} disabled={voiceBusy}>
+              {voiceBusy ? "保存中…" : "保存语音设置"}
+            </button>
+            {voiceResult && <p className="quota-success">{voiceResult}</p>}
+            {voiceError && (
+              <p className="request-error" role="alert">
+                {voiceError}
+              </p>
+            )}
+            <p className="tool-hint">
+              {voiceSettings?.updatedAt
+                ? `最近保存：${new Date(voiceSettings.updatedAt).toLocaleString("zh-CN")}`
+                : "尚未保存语音设置。"}
+            </p>
           </section>
         )}
       </Drawer>
