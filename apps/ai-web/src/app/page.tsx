@@ -1,9 +1,11 @@
 "use client";
 
-import { Bot, Coins, Download, KeyRound, LogIn, LogOut, PanelLeft, Plus, ReceiptText, Send, ShieldCheck, SlidersHorizontal, Sparkles, Square, Trash2, User } from "lucide-react";
+import { Bot, Coins, Download, KeyRound, LogIn, LogOut, PanelLeft, Plus, ReceiptText, Send, ShieldCheck, SlidersHorizontal, Sparkles, Square, Theater, Trash2, User } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Drawer } from "@/components/drawer";
+import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
+import { personaSystemPrompt, PRESET_PERSONAS, type Persona } from "@/lib/personas";
 
 type SessionState =
   | { status: "loading" }
@@ -30,6 +32,8 @@ type ConversationSummary = {
 	title: string;
 	updatedAt: number;
 	messageCount: number;
+	mode: "chat" | "roleplay";
+	personaName?: string;
 };
 
 type LedgerEntry = {
@@ -82,6 +86,10 @@ export default function HomePage() {
 	const [toolsOpen, setToolsOpen] = useState(false);
 	const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota">("ledger");
 	const [sidebarOpen, setSidebarOpen] = useState(false);
+	const [activeMode, setActiveMode] = useState<"chat" | "roleplay">("chat");
+	const [activePersona, setActivePersona] = useState<Persona | undefined>();
+	const [personas, setPersonas] = useState<Persona[]>([]);
+	const [setupOpen, setSetupOpen] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 
 	async function loadBalance() {
@@ -118,10 +126,24 @@ export default function HomePage() {
 			if (latest?.id) {
 				setConversationId(latest.id);
 				const detail = await fetch(`/api/chat/conversations/${latest.id}`, { cache: "no-store" }).then((response) => response.json());
-        if (Array.isArray(detail.messages)) setMessages(detail.messages);
-      } else {
-        await ensureConversation();
-      }
+				if (Array.isArray(detail.messages)) {
+					setMessages(detail.messages);
+					setActiveMode(detail.mode === "roleplay" ? "roleplay" : "chat");
+					setActivePersona(detail.persona ?? undefined);
+				}
+			} else {
+				await ensureConversation();
+			}
+		} catch {}
+	}
+
+	async function loadPersonas() {
+		try {
+			const response = await fetch("/api/personas", { cache: "no-store" });
+			if (response.ok) {
+				const body = await response.json();
+				setPersonas(Array.isArray(body.personas) ? body.personas : []);
+			}
 		} catch {}
 	}
 
@@ -215,19 +237,78 @@ export default function HomePage() {
 		if (Array.isArray(detail.messages)) {
 			setConversationId(id);
 			setMessages(detail.messages);
+			setActiveMode(detail.mode === "roleplay" ? "roleplay" : "chat");
+			setActivePersona(detail.persona ?? undefined);
 			setError("");
 		}
 	}
 
-	async function newConversation() {
+	function openNewConversationSetup() {
 		abortRef.current?.abort();
-		const created = await fetch("/api/chat/conversations", { method: "POST", cache: "no-store" }).then((response) => response.json());
-		if (created.conversation?.id) {
-			setConversationId(created.conversation.id);
-			setConversations((current) => [created.conversation, ...current]);
-			setMessages([]);
-			setError("");
+		setSetupOpen(true);
+	}
+
+	async function startPlainConversation() {
+		const response = await fetch("/api/chat/conversations", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ mode: "chat" }),
+			cache: "no-store",
+		});
+		const body = await response.json().catch(() => null);
+		if (!response.ok || !body?.conversation?.id) {
+			throw new Error(body?.error || "创建会话失败。");
 		}
+		setConversationId(body.conversation.id);
+		setConversations((current) => [body.conversation, ...current]);
+		setMessages([]);
+		setActiveMode("chat");
+		setActivePersona(undefined);
+		setError("");
+		setSetupOpen(false);
+	}
+
+	async function startRoleplayConversation(persona: Persona, saveToLibrary: boolean) {
+		let target = persona;
+		if (saveToLibrary) {
+			const response = await fetch("/api/personas", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ persona }),
+			});
+			const body = await response.json().catch(() => null);
+			if (!response.ok || !body?.persona?.id) {
+				throw new Error(body?.error || "保存角色失败。");
+			}
+			target = body.persona;
+			await loadPersonas();
+		}
+		const response = await fetch("/api/chat/conversations", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ mode: "roleplay", persona: target }),
+			cache: "no-store",
+		});
+		const body = await response.json().catch(() => null);
+		if (!response.ok || !body?.conversation?.id) {
+			throw new Error(body?.error || "创建会话失败。");
+		}
+		setConversationId(body.conversation.id);
+		setConversations((current) => [body.conversation, ...current]);
+		setMessages([]);
+		setActiveMode("roleplay");
+		setActivePersona(target);
+		setError("");
+		setSetupOpen(false);
+	}
+
+	async function deleteLibraryPersona(id: string) {
+		const response = await fetch(`/api/personas/${id}`, { method: "DELETE" });
+		if (!response.ok) {
+			const body = await response.json().catch(() => null);
+			throw new Error(body?.error || "删除角色失败。");
+		}
+		setPersonas((current) => current.filter((persona) => persona.id !== id));
 	}
 
 	async function deleteConversationById(id: string) {
@@ -268,6 +349,7 @@ export default function HomePage() {
 		setModel(body.models[0] ?? "");
 		void loadBalance();
 		void loadConversations();
+		void loadPersonas();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -294,7 +376,15 @@ export default function HomePage() {
       setError("会话初始化失败，请刷新后重试。");
       return;
     }
-    const requestMessages = [...messages, userMessage].map(({ role, content: messageContent }) => ({ role, content: messageContent }));
+    const systemMessages: { role: "system"; content: string }[] =
+      activeMode === "roleplay" && activePersona
+        ? [{ role: "system", content: personaSystemPrompt(activePersona) }]
+        : [];
+    const requestMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+      ...systemMessages,
+      ...messages,
+      userMessage,
+    ].map(({ role, content: messageContent }) => ({ role, content: messageContent }));
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setPrompt("");
     setError("");
@@ -440,7 +530,7 @@ export default function HomePage() {
               setSidebarOpen(false);
             }}
             onNew={() => {
-              void newConversation();
+              openNewConversationSetup();
               setSidebarOpen(false);
             }}
             onDelete={(id) => {
@@ -459,7 +549,12 @@ export default function HomePage() {
               <span className="avatar"><User size={17} aria-hidden="true" /></span>
               <span><strong>{session.identity.name}</strong><small>#{session.subject.userId}</small></span>
             </div>
-            <div className="toolbar-filters">
+				<div className="toolbar-filters">
+					{activePersona && (
+						<span className="persona-chip" title={`当前角色：${activePersona.name}`}>
+							{activePersona.avatar || "🎭"} {activePersona.name}
+						</span>
+					)}
 					<span className="balance" title="公益额度（单位）">
 						<small>公益额度</small>
 						<strong>{balanceUnits === null ? "—" : balanceUnits}</strong>
@@ -481,7 +576,7 @@ export default function HomePage() {
 					<button className="icon-action" type="button" onClick={() => conversationId && deleteConversationById(conversationId)} title="删除会话" aria-label="删除会话">
 						<Trash2 size={17} aria-hidden="true" />
 					</button>
-					<button className="icon-action" type="button" onClick={newConversation} title="新对话" aria-label="新对话">
+					<button className="icon-action" type="button" onClick={openNewConversationSetup} title="新对话" aria-label="新对话">
 						<Plus size={18} aria-hidden="true" />
 					</button>
 					<button className="icon-action" type="button" onClick={logout} title="退出登录" aria-label="退出登录">
@@ -631,12 +726,31 @@ export default function HomePage() {
 				)}
 			</Drawer>
 
+			<PersonaSetup
+				open={setupOpen}
+				presets={PRESET_PERSONAS}
+				library={personas}
+				onClose={() => setSetupOpen(false)}
+				onStartChat={startPlainConversation}
+				onStartRoleplay={startRoleplayConversation}
+				onDeletePersona={deleteLibraryPersona}
+			/>
+
 			<div className="conversation" aria-live="polite">
-            {messages.length === 0 && (
+            {activePersona?.firstMessage?.trim() ? (
+              <article className="message assistant">
+                <span className="message-icon"><Bot size={17} /></span>
+                <div>{activePersona.firstMessage}</div>
+              </article>
+            ) : null}
+            {messages.length === 0 && !activePersona && (
               <div className="empty-state">
                 <span><Bot size={24} aria-hidden="true" /></span>
                 <h1>新对话</h1>
                 <p>{model}</p>
+                <button className="ghost-action" type="button" onClick={openNewConversationSetup}>
+                  <Theater size={16} aria-hidden="true" /> 开始角色扮演
+                </button>
               </div>
             )}
             {messages.map((message) => (
