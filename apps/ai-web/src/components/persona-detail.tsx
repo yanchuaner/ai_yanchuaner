@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Copy, Pencil, Play, Star, Trash2 } from "lucide-react";
+import { CalendarClock, Copy, Download, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Drawer } from "@/components/drawer";
 import { KnowledgeDraftInput } from "@/components/knowledge-draft";
@@ -56,6 +56,19 @@ export function PersonaDetail({
   const [knowledgeDraft, setKnowledgeDraft] = useState<KnowledgeDraft>({ name: "", text: "" });
   const title = mode === "create" ? "新建角色" : mode === "edit" ? `编辑「${persona?.name}」` : persona?.name ?? "角色详情";
 
+  async function exportCard() {
+    if (!persona) return;
+    const response = await fetch(`/api/personas/${persona.id}/export`);
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${persona.name}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <Drawer open={Boolean(persona) || mode === "create"} title={title} onClose={onClose}>
       <div className={styles.body}>
@@ -84,6 +97,15 @@ export function PersonaDetail({
                 aria-label={favorite ? "取消收藏" : "收藏"}
               >
                 <Star size={18} fill={favorite ? "currentColor" : "none"} />
+              </button>
+              <button
+                className={styles.iconButton}
+                type="button"
+                onClick={() => void exportCard()}
+                title="导出角色卡（chara_card_v3）"
+                aria-label="导出角色卡"
+              >
+                <Download size={18} aria-hidden="true" />
               </button>
             </div>
 
