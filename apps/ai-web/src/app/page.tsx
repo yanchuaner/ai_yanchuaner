@@ -1187,6 +1187,7 @@ export default function HomePage() {
     }
     await loadBalance();
     await loadConversations();
+    void triggerMemory(targetConversationId);
   }
 
   const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
