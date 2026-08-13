@@ -33,6 +33,9 @@ type ChatStageProps = {
   models: string[];
   onModelChange: (model: string) => void;
   balanceUnits: number | null;
+  knowledgeEnabled: boolean;
+  onKnowledgeChange: (enabled: boolean) => void;
+  lastKnowledgeHits: number | null;
   pending: boolean;
   error: string;
   prompt: string;
@@ -59,6 +62,9 @@ export function ChatStage({
   models,
   onModelChange,
   balanceUnits,
+  knowledgeEnabled,
+  onKnowledgeChange,
+  lastKnowledgeHits,
   pending,
   error,
   prompt,
@@ -293,6 +299,20 @@ export function ChatStage({
             <section className={styles.contextSection}>
               <h3>模型</h3>
               <p>{model || "未选择"}</p>
+            </section>
+            <section className={styles.contextSection}>
+              <h3>知识检索</h3>
+              <label className={styles.knowledgeToggle}>
+                <input
+                  type="checkbox"
+                  checked={knowledgeEnabled}
+                  onChange={(event) => onKnowledgeChange(event.target.checked)}
+                />
+                <span>{knowledgeEnabled ? "已开启" : "已关闭"}</span>
+              </label>
+              {lastKnowledgeHits !== null && (
+                <p className={styles.knowledgeHits}>上次回答检索到 {lastKnowledgeHits} 个资料片段</p>
+              )}
             </section>
             <section className={styles.contextSection}>
               <h3>用量</h3>

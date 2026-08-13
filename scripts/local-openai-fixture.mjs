@@ -5,7 +5,8 @@ const host = process.env.FIXTURE_HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.FIXTURE_PORT || "4010", 10);
 const apiKey = process.env.FIXTURE_API_KEY || "local-fixture-key";
 const responseText = process.env.FIXTURE_RESPONSE_TEXT || "Yanchuaner autonomous AI model path passed.";
-const models = new Set(["deepseek-chat", "deepseek-reasoner", "gpt-4.1-mini"]);
+const models = new Set(["deepseek-chat", "deepseek-reasoner", "gpt-4.1-mini", "BAAI/bge-m3", "text-embedding-3-small"]);
+const embeddingModels = new Set(["BAAI/bge-m3", "text-embedding-3-small"]);
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535 || apiKey.length < 16) {
   throw new Error("Fixture port or API key is invalid.");
@@ -69,6 +70,20 @@ function streamCompletion(response, model, requestId) {
   response.end("data: [DONE]\n\n");
 }
 
+function embeddingVector(input, dimension = 32) {
+  const vector = [];
+  for (let index = 0; index < dimension; index += 1) {
+    let hash = 2166136261;
+    const source = `${input}#${index}`;
+    for (let offset = 0; offset < source.length; offset += 1) {
+      hash ^= source.charCodeAt(offset);
+      hash = Math.imul(hash, 16777619);
+    }
+    vector.push(((hash >>> 0) % 2000 - 1000) / 1000);
+  }
+  return vector;
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
   if (request.method === "GET" && url.pathname === "/health") {
@@ -81,6 +96,31 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.method === "GET" && url.pathname === "/v1/models") {
     json(response, 200, { object: "list", data: [...models].map((id) => ({ id, object: "model", owned_by: "local-fixture" })) });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/v1/embeddings") {
+    try {
+      const body = await readJson(request);
+      if (!embeddingModels.has(body.model) || !Array.isArray(body.input) || body.input.length === 0) {
+        json(response, 400, { error: { message: "invalid embedding request", type: "invalid_request_error" } });
+        return;
+      }
+      const inputs = body.input.map((item) => (typeof item === "string" ? item : String(item?.input ?? "")));
+      const data = inputs.map((input, index) => ({
+        object: "embedding",
+        index,
+        embedding: embeddingVector(input),
+      }));
+      const promptTokens = inputs.reduce((sum, input) => sum + Math.ceil(input.length / 4), 0);
+      json(response, 200, {
+        object: "list",
+        model: body.model,
+        data,
+        usage: { prompt_tokens: promptTokens, total_tokens: promptTokens },
+      });
+    } catch {
+      json(response, 400, { error: { message: "invalid embedding payload", type: "invalid_request_error" } });
+    }
     return;
   }
   if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {

@@ -19,7 +19,7 @@ import { PersonaLibrary } from "@/components/persona-library";
 import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
-import type { AppView, ChatMessage, ConversationSummary } from "@/lib/types";
+import type { AppView, ChatMessage, ConversationSummary, PersonaKnowledge } from "@/lib/types";
 
 type SessionState =
   | { status: "loading" }
@@ -80,6 +80,10 @@ export default function HomePage() {
   const [activePersona, setActivePersona] = useState<Persona | undefined>();
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<DetailState>({ open: false });
+  const [personaKnowledge, setPersonaKnowledge] = useState<PersonaKnowledge | null>(null);
+  const [knowledgeBusy, setKnowledgeBusy] = useState(false);
+  const [knowledgeEnabled, setKnowledgeEnabled] = useState(true);
+  const [lastKnowledgeHits, setLastKnowledgeHits] = useState<number | null>(null);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [ledgerTotal, setLedgerTotal] = useState(0);
   const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
@@ -335,6 +339,66 @@ export default function HomePage() {
 
   function openPersonaDetail(persona: Persona, mode: "view" | "edit" | "create" = "view") {
     setDetail({ open: true, persona, mode });
+    if (mode === "view") void loadPersonaKnowledge(persona.id);
+  }
+
+  async function loadPersonaKnowledge(personaId: string) {
+    try {
+      const response = await fetch(`/api/personas/${personaId}/knowledge`, { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setPersonaKnowledge({
+          knowledgeBase: body.knowledgeBase ?? null,
+          documents: Array.isArray(body.documents) ? body.documents : [],
+          chunkCount: typeof body.chunkCount === "number" ? body.chunkCount : 0,
+        });
+      }
+    } catch {}
+  }
+
+  async function addKnowledgeText(personaId: string, name: string, text: string) {
+    setKnowledgeBusy(true);
+    try {
+      const response = await fetch(`/api/personas/${personaId}/knowledge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, text, source: "paste" }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "保存资料失败。");
+      await loadPersonaKnowledge(personaId);
+    } finally {
+      setKnowledgeBusy(false);
+    }
+  }
+
+  async function addKnowledgeFile(personaId: string, file: File) {
+    setKnowledgeBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(`/api/personas/${personaId}/knowledge`, {
+        method: "POST",
+        body: form,
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "上传资料失败。");
+      await loadPersonaKnowledge(personaId);
+    } finally {
+      setKnowledgeBusy(false);
+    }
+  }
+
+  async function deleteKnowledgeDocument(documentId: string) {
+    const personaId = detail.open && detail.persona ? detail.persona.id : "";
+    const response = await fetch(`/api/personas/${personaId}/knowledge/documents/${documentId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || "删除资料失败。");
+    }
+    if (personaId) await loadPersonaKnowledge(personaId);
   }
 
   async function savePersonaEdit(id: string, input: PersonaInput) {
@@ -358,6 +422,7 @@ export default function HomePage() {
     const body = await response.json().catch(() => null);
     if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "创建角色失败。");
     setPersonas((current) => [...current, body.persona]);
+    void loadPersonaKnowledge(body.persona.id);
     return body.persona;
   }
 
@@ -385,6 +450,7 @@ export default function HomePage() {
     if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "复制角色失败。");
     setPersonas((current) => [...current, body.persona]);
     setDetail({ open: true, persona: body.persona, mode: "view" });
+    void loadPersonaKnowledge(body.persona.id);
   }
 
   async function deleteLibraryPersona(id: string) {
@@ -395,6 +461,8 @@ export default function HomePage() {
       throw new Error(body?.error || "删除角色失败。");
     }
     setPersonas((current) => current.filter((persona) => persona.id !== id));
+    await fetch(`/api/personas/${id}/knowledge`, { method: "DELETE" });
+    setPersonaKnowledge(null);
     setDetail({ open: false });
   }
 
@@ -471,10 +539,17 @@ export default function HomePage() {
       const response = await fetch("/api/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, messages: requestMessages }),
+        body: JSON.stringify({
+          model,
+          messages: requestMessages,
+          knowledge: activeMode === "roleplay" && Boolean(activePersona) && knowledgeEnabled,
+          conversationId: targetConversationId,
+        }),
         signal: controller.signal,
       });
       const requestId = response.headers.get("x-request-id") || "";
+      const knowledgeHits = Number(response.headers.get("x-yan-knowledge-hits") || 0);
+      setLastKnowledgeHits(knowledgeHits > 0 ? knowledgeHits : null);
       if (!response.ok || !response.body) {
         const body = await response.json().catch(() => null);
         const message =
@@ -695,6 +770,9 @@ export default function HomePage() {
                 models={session.models}
                 onModelChange={setModel}
                 balanceUnits={balanceUnits}
+                knowledgeEnabled={knowledgeEnabled}
+                onKnowledgeChange={setKnowledgeEnabled}
+                lastKnowledgeHits={lastKnowledgeHits}
                 pending={pending}
                 error={error}
                 prompt={prompt}
@@ -944,7 +1022,19 @@ export default function HomePage() {
           mode={detail.mode}
           favorite={detailPersona ? favoriteIds.includes(detailPersona.id) : false}
           recentConversations={detailRecent}
-          onClose={() => setDetail({ open: false })}
+          knowledge={personaKnowledge}
+          knowledgeBusy={knowledgeBusy}
+          onAddKnowledgeText={async (name, text) => {
+            if (detailPersona) await addKnowledgeText(detailPersona.id, name, text);
+          }}
+          onAddKnowledgeFile={async (file) => {
+            if (detailPersona) await addKnowledgeFile(detailPersona.id, file);
+          }}
+          onDeleteKnowledgeDocument={deleteKnowledgeDocument}
+          onClose={() => {
+            setDetail({ open: false });
+            setPersonaKnowledge(null);
+          }}
           onStart={(persona) => void startRoleplayConversation(persona, false)}
           onContinue={(id) => {
             setDetail({ open: false });
