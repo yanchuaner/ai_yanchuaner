@@ -81,6 +81,7 @@ export function PersonaSetup({
 
   function togglePersona(personaId: string) {
     setError("");
+    setDirectorId((current) => (current === personaId ? "none" : current));
     setSelectedIds((current) => {
       if (current.includes(personaId)) return current.filter((id) => id !== personaId);
       if (current.length >= 4) {
@@ -89,6 +90,13 @@ export function PersonaSetup({
       }
       return [...current, personaId];
     });
+  }
+
+  function selectDirector(personaId: string) {
+    setDirectorId(personaId);
+    if (personaId !== "none") {
+      setSelectedIds((current) => current.filter((id) => id !== personaId));
+    }
   }
 
   async function submitGroup() {
@@ -111,7 +119,7 @@ export function PersonaSetup({
         ? "使用预设角色或角色库中的角色，也可以新建自己的角色卡。"
         : step === "editor"
           ? "角色卡越具体，扮演越稳定。"
-          : "选择 2 到 4 个角色同台，可选一位导演负责旁白与场景。";
+          : "选择 2 到 4 个角色同台，可选一位主持人营造场景氛围；角色会按剧情单独或同时回应你。";
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="新对话设置">
@@ -153,7 +161,7 @@ export function PersonaSetup({
                 <Users size={22} aria-hidden="true" />
               </span>
               <strong>多人群聊</strong>
-              <small>选择 2 到 4 个角色同台，可选导演旁白，角色们轮流与你对话。</small>
+              <small>选择 2 到 4 个角色同台，可选主持人营造场景氛围；角色会按剧情单独或同时回应你。</small>
             </button>
           </div>
         )}
@@ -217,16 +225,15 @@ export function PersonaSetup({
               </div>
             </section>
             <section>
-              <h3>导演（可选）</h3>
+              <h3>主持人（可选，只营造氛围，不发言）</h3>
               <select
                 className={styles.directorSelect}
                 value={directorId}
-                onChange={(event) => setDirectorId(event.target.value)}
+                onChange={(event) => selectDirector(event.target.value)}
                 disabled={busy}
               >
-                <option value="none">无导演</option>
+                <option value="none">无主持人</option>
                 {[...presets, ...library]
-                  .filter((persona) => selectedIds.includes(persona.id))
                   .map((persona) => (
                     <option value={persona.id} key={persona.id}>
                       {persona.name}
