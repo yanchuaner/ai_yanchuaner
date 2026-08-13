@@ -144,6 +144,27 @@ const server = http.createServer(async (request, response) => {
     }
     return;
   }
+  if (request.method === "POST" && url.pathname === "/v1/images/generations") {
+    try {
+      const body = await readJson(request);
+      if (!body.model || typeof body.prompt !== "string" || !body.prompt) {
+        json(response, 400, { error: { message: "invalid image request", type: "invalid_request_error" } });
+        return;
+      }
+      // 1×1 透明 PNG，用于本地验证画图链路。
+      json(response, 200, {
+        data: [
+          {
+            b64_json:
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+          },
+        ],
+      });
+    } catch {
+      json(response, 400, { error: { message: "invalid image payload", type: "invalid_request_error" } });
+    }
+    return;
+  }
   if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
     json(response, 404, { error: { message: "fixture route not found", type: "invalid_request_error" } });
     return;

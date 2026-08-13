@@ -6,6 +6,7 @@ import {
   KeyRound,
   LogIn,
   Mic,
+  Palette,
   PanelLeft,
   ReceiptText,
   ShieldCheck,
@@ -118,7 +119,7 @@ export default function HomePage() {
   const [createdKey, setCreatedKey] = useState("");
   const [keysError, setKeysError] = useState("");
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota" | "voice" | "worlds">("ledger");
+  const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota" | "voice" | "worlds" | "media">("ledger");
   const [worlds, setWorlds] = useState<World[]>([]);
   const [worldForm, setWorldForm] = useState({ title: "", description: "", timeline: "", outline: "" });
   const [worldBusy, setWorldBusy] = useState(false);
@@ -126,6 +127,14 @@ export default function HomePage() {
   const [worldError, setWorldError] = useState("");
   const [activeWorldTitle, setActiveWorldTitle] = useState<string | null>(null);
   const [activeUserRoleName, setActiveUserRoleName] = useState<string | null>(null);
+  const [mediaSettings, setMediaSettings] = useState<{ baseUrl: string; visionModel: string; imageModel: string } | null>(null);
+  const [mediaForm, setMediaForm] = useState({ baseUrl: "", visionModel: "", imageModel: "", apiKey: "" });
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaResult, setMediaResult] = useState("");
+  const [mediaError, setMediaError] = useState("");
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const imageFileRef = useRef<HTMLInputElement | null>(null);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettingsView | null>(null);
   const [voiceForm, setVoiceForm] = useState({
     asrBaseUrl: "",
@@ -259,13 +268,14 @@ export default function HomePage() {
     } catch {}
   }
 
-  async function openTools(tab: "ledger" | "keys" | "quota" | "voice" | "worlds") {
+  async function openTools(tab: "ledger" | "keys" | "quota" | "voice" | "worlds" | "media") {
     setToolsTab(tab);
     setToolsOpen(true);
     if (tab === "ledger") await loadLedger();
     if (tab === "keys") await loadKeys();
     if (tab === "voice") await loadVoiceSettings();
     if (tab === "worlds") await loadWorlds();
+    if (tab === "media") await loadMediaSettings();
   }
 
   async function loadVoiceSettings() {
@@ -411,6 +421,123 @@ export default function HomePage() {
       return;
     }
     await loadWorlds();
+  }
+
+  async function loadMediaSettings() {
+    try {
+      const response = await fetch("/api/me/media", { cache: "no-store" });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      if (!response.ok) return;
+      const body = await response.json();
+      setMediaSettings(body.settings);
+      setMediaForm({
+        baseUrl: body.settings?.baseUrl ?? "https://api.siliconflow.cn/v1",
+        visionModel: body.settings?.visionModel ?? "Qwen/Qwen2.5-VL-72B-Instruct",
+        imageModel: body.settings?.imageModel ?? "black-forest-labs/FLUX.1-schnell",
+        apiKey: "",
+      });
+    } catch {}
+  }
+
+  async function saveMediaSettings() {
+    setMediaBusy(true);
+    setMediaError("");
+    setMediaResult("");
+    try {
+      const response = await fetch("/api/me/media", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: mediaForm.baseUrl.trim(),
+          visionModel: mediaForm.visionModel.trim(),
+          imageModel: mediaForm.imageModel.trim(),
+          apiKey: mediaForm.apiKey || undefined,
+        }),
+      });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "保存媒体设置失败。");
+      setMediaSettings(body.settings);
+      setMediaResult("媒体设置已保存。");
+      setMediaForm((current) => ({ ...current, apiKey: "" }));
+    } catch (reason) {
+      setMediaError(reason instanceof Error ? reason.message : "保存媒体设置失败。");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function clearMedia() {
+    const response = await fetch("/api/me/media", { method: "DELETE" });
+    if (response.ok) {
+      setMediaSettings(null);
+      setMediaResult("媒体设置已清除。");
+    }
+  }
+
+  function pickImageFile() {
+    imageFileRef.current?.click();
+  }
+
+  function handleImageFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setError("请选择图片文件。");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setError("图片不能超过 8 MB。");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setPendingImage(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function generateImage(prompt: string) {
+    const content = prompt.trim();
+    if (!content || imageBusy || pending) return;
+    setImageBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/me/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: content }),
+      });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "图片生成失败。");
+      const message = {
+        id: `image-${crypto.randomUUID()}`,
+        role: "assistant" as const,
+        content,
+        imageUrl: body.image,
+      };
+      setMessages((current) => [...current, message]);
+      setPrompt("");
+      if (conversationId) {
+        await fetch(`/api/chat/conversations/${conversationId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(message),
+        }).catch(() => {});
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "图片生成失败。");
+    } finally {
+      setImageBusy(false);
+    }
   }
 
   async function transcribeVoice(file: File): Promise<string> {
@@ -944,9 +1071,35 @@ export default function HomePage() {
   async function submit() {
     const content = prompt.trim();
     if (!content || pending || session.status !== "authenticated" || !model) return;
+    let finalContent = content;
+    if (pendingImage) {
+      try {
+        const visionResponse = await fetch("/api/me/vision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image: pendingImage,
+            prompt: "结合当前对话，用 100 字以内简要描述这张图片的内容。",
+          }),
+        });
+        if (visionResponse.status === 401) {
+          handleSessionExpired();
+          return;
+        }
+        const visionBody = await visionResponse.json().catch(() => null);
+        if (!visionResponse.ok) throw new Error(visionBody?.error || "图片理解失败。");
+        finalContent = content
+          ? `${content}\n\n（用户附带了一张图片：${visionBody.text}）`
+          : `（用户发来一张图片：${visionBody.text}）`;
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "图片理解失败。");
+        return;
+      }
+    }
     const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
     const activeMode = activeConversation?.mode ?? "chat";
-    const userMessage = newMessage("user", content);
+    const userMessage = newMessage("user", finalContent);
+    setPendingImage(null);
     const assistantMessage = newMessage("assistant", "");
     const targetConversationId = await ensureConversation();
     if (!targetConversationId) {
@@ -973,7 +1126,7 @@ export default function HomePage() {
         await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: userMessage.id, role: "user", content }),
+          body: JSON.stringify({ id: userMessage.id, role: "user", content: userMessage.content }),
         });
         await runGroupTurn(targetConversationId, requestMessages, controller);
       } catch (reason) {
@@ -999,7 +1152,7 @@ export default function HomePage() {
       await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: userMessage.id, role: "user", content }),
+        body: JSON.stringify({ id: userMessage.id, role: "user", content: userMessage.content }),
       });
       const response = await fetch("/api/chat/completions", {
         method: "POST",
@@ -1451,6 +1604,11 @@ export default function HomePage() {
                 speakingId={speakingId}
                 onAsr={transcribeVoice}
                 onSpeak={speakVoice}
+                pendingImage={pendingImage}
+                imageBusy={imageBusy}
+                onPickImage={pickImageFile}
+                onClearImage={() => setPendingImage(null)}
+                onGenerateImage={generateImage}
               />
             )}
           </section>
@@ -1495,6 +1653,13 @@ export default function HomePage() {
             onClick={() => openTools("worlds")}
           >
             <Globe size={15} aria-hidden="true" /> 世界观
+          </button>
+          <button
+            className={toolsTab === "media" ? "tools-tab active" : "tools-tab"}
+            type="button"
+            onClick={() => openTools("media")}
+          >
+            <Palette size={15} aria-hidden="true" /> 媒体
           </button>
         </div>
 
@@ -1890,7 +2055,85 @@ export default function HomePage() {
             )}
           </section>
         )}
+
+        {toolsTab === "media" && (
+          <section className="tool-section" aria-live="polite">
+            <h2>媒体设置</h2>
+            <p className="tool-hint">
+              使用你自己的 OpenAI 兼容视觉 / 画图服务。API Key 加密保存，只用于媒体请求，不会回显。开发阶段默认硅基流动模型。
+            </p>
+            <div className="quota-form">
+              <label className="tool-full">
+                <span>服务地址</span>
+                <input
+                  type="text"
+                  value={mediaForm.baseUrl}
+                  onChange={(event) => setMediaForm({ ...mediaForm, baseUrl: event.target.value })}
+                  placeholder="https://api.siliconflow.cn/v1"
+                />
+              </label>
+              <label className="tool-full">
+                <span>视觉模型（看图）</span>
+                <input
+                  type="text"
+                  value={mediaForm.visionModel}
+                  onChange={(event) => setMediaForm({ ...mediaForm, visionModel: event.target.value })}
+                  placeholder="Qwen/Qwen2.5-VL-72B-Instruct"
+                />
+              </label>
+              <label className="tool-full">
+                <span>画图模型</span>
+                <input
+                  type="text"
+                  value={mediaForm.imageModel}
+                  onChange={(event) => setMediaForm({ ...mediaForm, imageModel: event.target.value })}
+                  placeholder="black-forest-labs/FLUX.1-schnell"
+                />
+              </label>
+              <label className="tool-full">
+                <span>API Key（留空保持不变）</span>
+                <input
+                  type="password"
+                  value={mediaForm.apiKey}
+                  onChange={(event) => setMediaForm({ ...mediaForm, apiKey: event.target.value })}
+                  placeholder="sk-…"
+                />
+              </label>
+            </div>
+            <button className="primary-action" type="button" onClick={() => void saveMediaSettings()} disabled={mediaBusy}>
+              {mediaBusy ? "保存中…" : "保存媒体设置"}
+            </button>
+            {mediaSettings && (
+              <button className="ghost-action" type="button" onClick={() => void clearMedia()} disabled={mediaBusy}>
+                清除媒体设置
+              </button>
+            )}
+            {mediaResult && <p className="quota-success">{mediaResult}</p>}
+            {mediaError && (
+              <p className="request-error" role="alert">
+                {mediaError}
+              </p>
+            )}
+            <p className="tool-hint">
+              {mediaSettings?.baseUrl
+                ? `已配置：${mediaSettings.baseUrl}`
+                : "尚未配置媒体服务。"}
+            </p>
+          </section>
+        )}
       </Drawer>
+
+      <input
+        ref={imageFileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) handleImageFile(file);
+          event.target.value = "";
+        }}
+      />
 
       <PersonaSetup
         open={setupOpen}

@@ -396,6 +396,42 @@
   margin-bottom: 5px;
 }
 
+.messageImage {
+  border-radius: var(--radius-sm);
+  display: block;
+  margin-top: 10px;
+  max-height: 320px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.imagePreview {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.imagePreview img {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  max-height: 120px;
+  max-width: 160px;
+  object-fit: contain;
+}
+
+.imagePreview button {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-muted);
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
 @keyframes thinkingPulse {
   0%,
   100% {
