@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowRight, Bot, Coins, Plus, Sparkles, Star, Users } from "lucide-react";
+import { ArrowRight, Bot, Coins, FileText, Plus, Sparkles, Star, Users } from "lucide-react";
 import { type Persona } from "@/lib/personas";
-import type { ConversationSummary } from "@/lib/types";
+import type { ConversationSummary, KnowledgeDocumentSummary } from "@/lib/types";
 import styles from "./home-view.module.css";
 
 type HomeViewProps = {
@@ -13,6 +13,8 @@ type HomeViewProps = {
   presets: Persona[];
   library: Persona[];
   favoriteIds: string[];
+  userKnowledge: { documents: KnowledgeDocumentSummary[]; chunkCount: number } | null;
+  onOpenUserKnowledge: () => void;
   onOpenConversation: (id: string) => void;
   onOpenChat: () => void;
   onNewChat: () => void;
@@ -29,6 +31,8 @@ export function HomeView({
   presets,
   library,
   favoriteIds,
+  userKnowledge,
+  onOpenUserKnowledge,
   onOpenConversation,
   onOpenChat,
   onNewChat,
@@ -78,6 +82,24 @@ export function HomeView({
             <small>当前模型</small>
             <strong>{model || "—"}</strong>
             <em>进入对话后可切换</em>
+          </span>
+        </div>
+      </section>
+
+      <section className={styles.panel}>
+        <header className={styles.panelHead}>
+          <h2>我的资料</h2>
+          <button className={styles.textAction} type="button" onClick={onOpenUserKnowledge}>
+            管理资料 <ArrowRight size={14} aria-hidden="true" />
+          </button>
+        </header>
+        <div className={styles.knowledgeRow}>
+          <span className={styles.knowledgeIcon}>
+            <FileText size={18} aria-hidden="true" />
+          </span>
+          <span>
+            <strong>{userKnowledge ? `${userKnowledge.documents.length} 份资料 · ${userKnowledge.chunkCount} 个片段` : "暂无资料"}</strong>
+            <small>剧情、背景与经历放在这里，所有对话都会自动检索。</small>
           </span>
         </div>
       </section>

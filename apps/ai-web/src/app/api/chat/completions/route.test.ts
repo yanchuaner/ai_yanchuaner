@@ -6,7 +6,12 @@ import test from "node:test";
 import { NextRequest } from "next/server";
 import { handleChatCompletion } from "@/lib/chat-handler";
 import { createConversation } from "@/lib/conversations";
-import { addKnowledgeDocument, searchPersonaKnowledge } from "@/lib/knowledge-library";
+import {
+  addKnowledgeDocument,
+  addUserKnowledgeDocument,
+  searchPersonaKnowledge,
+} from "@/lib/knowledge-library";
+import { savePersonaMemory } from "@/lib/memory-library";
 import { seal, type AiSession } from "@/lib/session";
 
 const sessionSecret = "01234567890123456789012345678901";
@@ -131,6 +136,18 @@ test("chat route retrieves persona knowledge and injects it as context", async (
       "BAAI/bge-m3",
       () => Promise.resolve([[0, 1, 1]]),
     );
+    await addUserKnowledgeDocument(
+      7,
+      { name: "我的经历", text: "我喜欢在校园里散步。" },
+      "BAAI/bge-m3",
+      () => Promise.resolve([[0, 1, 0]]),
+    );
+    await savePersonaMemory(7, {
+      personaId: persona.id,
+      summary: "角色记住了用户的生日。",
+      sourceConversationId: conversation.id,
+      messageCount: 30,
+    });
     const directHits = await searchPersonaKnowledge(7, persona.id, [0, 1, 1], 4, 0.3);
     assert.equal(directHits.length, 1);
 
@@ -168,11 +185,14 @@ test("chat route retrieves persona knowledge and injects it as context", async (
     );
     assert.equal(response.status, 200);
     assert.equal(embeddingCalls, 1);
-    assert.equal(response.headers.get("x-yan-knowledge-hits"), "1");
+    assert.equal(response.headers.get("x-yan-knowledge-hits"), "2");
     const forwarded = JSON.parse(seenBody);
-    assert.match(forwarded.messages[0].content, /资料库/);
-    assert.match(forwarded.messages[0].content, /校园时代/);
-    assert.equal(forwarded.messages[1].role, "user");
+    assert.match(forwarded.messages[0].content, /长期记忆/);
+    assert.match(forwarded.messages[0].content, /生日/);
+    assert.match(forwarded.messages[1].content, /资料库/);
+    assert.match(forwarded.messages[1].content, /我的经历/);
+    assert.match(forwarded.messages[1].content, /校园时代/);
+    assert.equal(forwarded.messages[2].role, "user");
     assert.doesNotMatch(seenBody, /sk-yc_/);
   });
 });
