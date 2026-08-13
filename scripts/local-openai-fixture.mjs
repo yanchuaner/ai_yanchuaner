@@ -4,6 +4,7 @@ import http from "node:http";
 const host = process.env.FIXTURE_HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.FIXTURE_PORT || "4010", 10);
 const apiKey = process.env.FIXTURE_API_KEY || "local-fixture-key";
+const apiKeys = [apiKey, ...(process.env.FIXTURE_EXTRA_KEYS || "").split(",").map((key) => key.trim()).filter(Boolean)];
 const responseText = process.env.FIXTURE_RESPONSE_TEXT || "Yanchuaner autonomous AI model path passed.";
 const models = new Set(["deepseek-chat", "deepseek-reasoner", "gpt-4.1-mini", "BAAI/bge-m3", "text-embedding-3-small"]);
 const embeddingModels = new Set(["BAAI/bge-m3", "text-embedding-3-small"]);
@@ -23,9 +24,11 @@ function json(response, status, body, headers = {}) {
 }
 
 function hasValidAuthorization(request) {
-  const expected = Buffer.from(`Bearer ${apiKey}`);
   const actual = Buffer.from(request.headers.authorization || "");
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  return apiKeys.some((key) => {
+    const expected = Buffer.from(`Bearer ${key}`);
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+  });
 }
 
 async function readJson(request) {
