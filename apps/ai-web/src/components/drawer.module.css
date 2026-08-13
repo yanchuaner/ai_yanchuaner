@@ -6,8 +6,10 @@
 }
 
 .panel {
-  background: var(--bg);
+  background: var(--glass-strong);
+  backdrop-filter: blur(var(--glass-blur));
   border-left: 1px solid var(--line);
+  box-shadow: var(--glass-highlight);
   display: flex;
   flex-direction: column;
   height: 100%;

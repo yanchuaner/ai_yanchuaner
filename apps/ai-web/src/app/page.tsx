@@ -1250,7 +1250,10 @@ export default function HomePage() {
           handleSessionExpired();
           return;
         }
-        if (!controller.signal.aborted) setError(message);
+        if (!controller.signal.aborted) {
+          setError(message);
+          setPrompt(content);
+        }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         setPending(false);
@@ -1368,7 +1371,10 @@ export default function HomePage() {
         handleSessionExpired();
         return;
       }
-      if (!controller.signal.aborted) setError(message);
+      if (!controller.signal.aborted) {
+        setError(message);
+        setPrompt(content);
+      }
       setMessages((current) =>
         current.filter((message) => message.id !== assistantMessage.id || message.content.length > 0),
       );

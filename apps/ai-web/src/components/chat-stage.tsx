@@ -370,13 +370,18 @@ export function ChatStage({
                 )}
               </div>
             )}
-            {displayMessages.map((message) => {
+            {displayMessages.map((message, index) => {
               const speaker =
                 message.role === "assistant" && message.personaId
                   ? cast.find((persona) => persona.id === message.personaId)
                   : activePersona;
+              const isStreaming =
+                pending && message.role === "assistant" && index === displayMessages.length - 1;
               return (
-                <article className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant}`} key={message.id}>
+                <article
+                  className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant} ${isStreaming ? styles.streaming : ""}`}
+                  key={message.id}
+                >
                   <span className={styles.messageIcon}>
                     {message.role === "user" ? <User size={16} aria-hidden="true" /> : speaker?.avatar || <HumanistMark size={16} />}
                   </span>

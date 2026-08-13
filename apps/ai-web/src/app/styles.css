@@ -11,6 +11,7 @@
   background: rgba(6, 10, 18, 0.78);
   backdrop-filter: blur(var(--glass-blur));
   border-bottom: 1px solid var(--line);
+  box-shadow: var(--glass-highlight);
   display: flex;
   height: 58px;
   justify-content: space-between;
