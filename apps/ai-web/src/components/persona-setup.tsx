@@ -1,8 +1,10 @@
 "use client";
 
-import { Bot, ChevronLeft, Plus, Sparkles, Theater, Trash2, X } from "lucide-react";
+import { Bot, Plus, Sparkles, Theater, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { KnowledgeDraftInput } from "@/components/knowledge-draft";
 import { type Persona } from "@/lib/personas";
+import type { KnowledgeDraft } from "@/lib/types";
 import { PersonaForm } from "@/components/persona-form";
 import styles from "./persona-setup.module.css";
 
@@ -12,7 +14,7 @@ type PersonaSetupProps = {
   library: Persona[];
   onClose: () => void;
   onStartChat: () => Promise<void>;
-  onStartRoleplay: (persona: Persona, saveToLibrary: boolean) => Promise<void>;
+  onStartRoleplay: (persona: Persona, saveToLibrary: boolean, knowledge?: KnowledgeDraft) => Promise<void>;
   onDeletePersona: (id: string) => Promise<void>;
 };
 
@@ -27,6 +29,7 @@ export function PersonaSetup({
 }: PersonaSetupProps) {
   const [step, setStep] = useState<"mode" | "library" | "editor">("mode");
   const [saveToLibrary, setSaveToLibrary] = useState(true);
+  const [knowledgeDraft, setKnowledgeDraft] = useState<KnowledgeDraft>({ name: "", text: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -34,6 +37,7 @@ export function PersonaSetup({
     if (open) {
       setStep("mode");
       setSaveToLibrary(true);
+      setKnowledgeDraft({ name: "", text: "" });
       setError("");
       setBusy(false);
     }
@@ -172,10 +176,12 @@ export function PersonaSetup({
                   onStartRoleplay(
                     { id: `local-${crypto.randomUUID()}`, ...input },
                     saveToLibrary,
+                    knowledgeDraft,
                   ),
                 );
               }}
             />
+            <KnowledgeDraftInput value={knowledgeDraft} onChange={setKnowledgeDraft} />
           </div>
         )}
       </section>

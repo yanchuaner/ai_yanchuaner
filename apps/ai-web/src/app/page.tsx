@@ -20,7 +20,13 @@ import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
 import { UserKnowledgeDrawer } from "@/components/user-knowledge";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
-import type { AppView, ChatMessage, ConversationSummary, PersonaKnowledge } from "@/lib/types";
+import type {
+  AppView,
+  ChatMessage,
+  ConversationSummary,
+  KnowledgeDraft,
+  PersonaKnowledge,
+} from "@/lib/types";
 
 type SessionState =
   | { status: "loading" }
@@ -105,6 +111,14 @@ export default function HomePage() {
   const [setupOpen, setSetupOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  function handleSessionExpired() {
+    abortRef.current?.abort();
+    setSession({ status: "anonymous" });
+    setConversationId(null);
+    setMessages([]);
+    setPending(false);
+  }
+
   async function loadBalance() {
     try {
       const response = await fetch("/api/me/balance", { cache: "no-store" });
@@ -133,7 +147,12 @@ export default function HomePage() {
 
   async function loadConversations() {
     try {
-      const list = await fetch("/api/chat/conversations", { cache: "no-store" }).then((response) => response.json());
+      const response = await fetch("/api/chat/conversations", { cache: "no-store" });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      const list = await response.json();
       setConversations(Array.isArray(list.conversations) ? list.conversations : []);
     } catch {}
   }
@@ -141,6 +160,10 @@ export default function HomePage() {
   async function loadPersonas() {
     try {
       const response = await fetch("/api/personas", { cache: "no-store" });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       if (response.ok) {
         const body = await response.json();
         setPersonas(Array.isArray(body.personas) ? body.personas : []);
@@ -151,6 +174,10 @@ export default function HomePage() {
   async function loadUserKnowledge() {
     try {
       const response = await fetch("/api/me/knowledge", { cache: "no-store" });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       if (response.ok) {
         const body = await response.json();
         setUserKnowledge({
@@ -165,6 +192,10 @@ export default function HomePage() {
   async function loadFavorites() {
     try {
       const response = await fetch("/api/preferences", { cache: "no-store" });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       if (response.ok) {
         const body = await response.json();
         setFavoriteIds(Array.isArray(body.preferences?.favoritePersonaIds) ? body.preferences.favoritePersonaIds : []);
@@ -223,9 +254,12 @@ export default function HomePage() {
     abortRef.current?.abort();
     setView("chat");
     setError("");
-    const detailResponse = await fetch(`/api/chat/conversations/${id}`, { cache: "no-store" }).then((response) =>
-      response.json(),
-    );
+    const response = await fetch(`/api/chat/conversations/${id}`, { cache: "no-store" });
+    if (response.status === 401) {
+      handleSessionExpired();
+      return;
+    }
+    const detailResponse = await response.json();
     if (!Array.isArray(detailResponse.messages)) return;
     setConversationId(id);
     setMessages(detailResponse.messages);
@@ -258,6 +292,10 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, text, source: "paste" }),
       });
+      if (response.status === 401) {
+        handleSessionExpired();
+        throw new Error("登录会话已失效，请重新登录。");
+      }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || "保存资料失败。");
       await loadUserKnowledge();
@@ -272,6 +310,10 @@ export default function HomePage() {
       const form = new FormData();
       form.append("file", file);
       const response = await fetch("/api/me/knowledge", { method: "POST", body: form });
+      if (response.status === 401) {
+        handleSessionExpired();
+        throw new Error("登录会话已失效，请重新登录。");
+      }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || "上传资料失败。");
       await loadUserKnowledge();
@@ -340,7 +382,18 @@ export default function HomePage() {
     setView("chat");
   }
 
-  async function startRoleplayConversation(persona: Persona, saveToLibrary: boolean) {
+  async function uploadInitialKnowledge(personaId: string, knowledge: KnowledgeDraft) {
+    if (knowledge.file) await addKnowledgeFile(personaId, knowledge.file);
+    if (knowledge.text.trim()) {
+      await addKnowledgeText(personaId, knowledge.name.trim() || "初始资料", knowledge.text);
+    }
+  }
+
+  async function startRoleplayConversation(
+    persona: Persona,
+    saveToLibrary: boolean,
+    knowledge?: KnowledgeDraft,
+  ) {
     let target = persona;
     if (saveToLibrary) {
       const response = await fetch("/api/personas", {
@@ -361,6 +414,13 @@ export default function HomePage() {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok || !body?.conversation?.id) throw new Error(body?.error || "创建会话失败。");
+    if (knowledge) {
+      try {
+        await uploadInitialKnowledge(target.id, knowledge);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "初始资料上传失败。");
+      }
+    }
     setConversationId(body.conversation.id);
     setConversations((current) => [body.conversation, ...current]);
     setMessages([]);
@@ -464,6 +524,10 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, text, source: "paste" }),
       });
+      if (response.status === 401) {
+        handleSessionExpired();
+        throw new Error("登录会话已失效，请重新登录。");
+      }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || "保存资料失败。");
       await loadPersonaKnowledge(personaId);
@@ -481,6 +545,10 @@ export default function HomePage() {
         method: "POST",
         body: form,
       });
+      if (response.status === 401) {
+        handleSessionExpired();
+        throw new Error("登录会话已失效，请重新登录。");
+      }
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error || "上传资料失败。");
       await loadPersonaKnowledge(personaId);
@@ -730,7 +798,12 @@ export default function HomePage() {
         void triggerMemory(targetConversationId);
       }
     } catch (reason) {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "模型请求失败。");
+      const message = reason instanceof Error ? reason.message : "模型请求失败。";
+      if (message.includes("登录会话已失效")) {
+        handleSessionExpired();
+        return;
+      }
+      if (!controller.signal.aborted) setError(message);
       setMessages((current) =>
         current.filter((message) => message.id !== assistantMessage.id || message.content.length > 0),
       );
@@ -794,7 +867,7 @@ export default function HomePage() {
               <ShieldCheck size={22} aria-hidden="true" />
               <div>
                 <h2>主站统一身份</h2>
-                <p>面向已认证在校生、校友、教师与管理员开放。</p>
+                <p>面向已认证在校生、校友、教师与管理员开放；登录会话会定期失效，重新登录即可继续。</p>
               </div>
             </div>
             <a className="primary-action" href="/api/auth/login">
@@ -1165,8 +1238,16 @@ export default function HomePage() {
           onSave={async (input) => {
             if (detailPersona) await savePersonaEdit(detailPersona.id, input);
           }}
-          onCreate={async (input) => {
+          onCreate={async (input, knowledge) => {
             const persona = await createLibraryPersona(input);
+            if (knowledge) {
+              try {
+                await uploadInitialKnowledge(persona.id, knowledge);
+              } catch (reason) {
+                setError(reason instanceof Error ? reason.message : "初始资料上传失败。");
+              }
+            }
+            await loadPersonaKnowledge(persona.id);
             setDetail({ open: true, persona, mode: "view" });
           }}
           onDelete={() => detailPersona && void deleteLibraryPersona(detailPersona.id)}

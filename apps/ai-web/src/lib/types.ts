@@ -50,3 +50,10 @@ export type PersonaKnowledge = {
   documents: KnowledgeDocumentSummary[];
   chunkCount: number;
 };
+
+// 新建角色时可选携带的初始资料，角色创建成功后自动入库。
+export type KnowledgeDraft = {
+  name: string;
+  text: string;
+  file?: File;
+};
