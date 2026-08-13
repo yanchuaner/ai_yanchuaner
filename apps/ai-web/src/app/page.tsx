@@ -1641,6 +1641,10 @@ export default function HomePage() {
               openNewConversationSetup();
               setSidebarOpen(false);
             }}
+            onOpenWorlds={() => {
+              void openTools("worlds");
+              setSidebarOpen(false);
+            }}
             onDelete={(id) => void deleteConversationById(id)}
             onExport={(id) => void exportConversationById(id)}
             onUpdate={(id, patch) => void updateConversationMeta(id, patch)}

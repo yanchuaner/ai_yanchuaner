@@ -4,6 +4,7 @@ import {
   Archive,
   ArchiveRestore,
   Download,
+  Globe,
   LayoutGrid,
   MessagesSquare,
   Pin,
@@ -27,6 +28,7 @@ type SidebarProps = {
   onClose: () => void;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onOpenWorlds: () => void;
   onDelete: (id: string) => void;
   onExport: (id: string) => void;
   onUpdate: (id: string, patch: { title?: string; pinned?: boolean; archived?: boolean }) => void;
@@ -44,6 +46,7 @@ export function ConversationSidebar({
   onClose,
   onSelect,
   onNew,
+  onOpenWorlds,
   onDelete,
   onExport,
   onUpdate,
@@ -82,6 +85,14 @@ export function ConversationSidebar({
             onClick={() => onNavigate("personas")}
           >
             <Users size={16} aria-hidden="true" /> 角色库
+          </button>
+          <button
+            className={styles.navItem}
+            type="button"
+            onClick={onOpenWorlds}
+            title="故事世界管理"
+          >
+            <Globe size={16} aria-hidden="true" /> 世界库
           </button>
         </nav>
 
