@@ -64,3 +64,36 @@ export async function forwardChatCompletion(
   if (requestId) headers.set("X-Request-ID", requestId);
   return new Response(upstream.body, { status: upstream.status, headers });
 }
+
+export async function forwardChatCompletionJson(
+  apiBaseUrl: URL,
+  accessKey: string,
+  request: AiChatRequest,
+  fetcher: typeof fetch = fetch,
+  clientSignal?: AbortSignal,
+): Promise<{ status: number; body: unknown }> {
+  const endpoint = new URL("/v1/chat/completions", apiBaseUrl);
+  const upstream = await fetcher(endpoint, {
+    method: "POST",
+    cache: "no-store",
+    redirect: "error",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessKey}`,
+      "Content-Type": "application/json",
+      "X-YanCore-Application": "ai-web",
+    },
+    body: JSON.stringify({ ...request, stream: false }),
+    signal: clientSignal
+      ? AbortSignal.any([clientSignal, AbortSignal.timeout(30_000)])
+      : AbortSignal.timeout(30_000),
+  });
+  const text = await upstream.text();
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = null;
+  }
+  return { status: upstream.status, body };
+}

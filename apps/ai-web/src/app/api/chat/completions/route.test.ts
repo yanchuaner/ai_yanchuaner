@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { NextRequest } from "next/server";
 import { handleChatCompletion } from "@/lib/chat-handler";
-import { createConversation } from "@/lib/conversations";
+import { createConversation, getConversationDetail } from "@/lib/conversations";
 import {
   addKnowledgeDocument,
   addUserKnowledgeDocument,
@@ -197,7 +197,7 @@ test("chat route retrieves persona knowledge and injects it as context", async (
   });
 });
 
-test("chat route builds group context and retrieves each member's knowledge", async () => {
+test("chat route schedules group speakers then streams each member independently", async () => {
   await withDataDir(async () => {
     const first = {
       id: "preset-star-traveler",
@@ -235,13 +235,16 @@ test("chat route builds group context and retrieves each member's knowledge", as
       () => Promise.resolve([[0, 1, 0]]),
     );
     await savePersonaMemory(7, {
-      personaId: director.id,
-      summary: "导演记得这是第一次群聊。",
+      personaId: first.id,
+      summary: "旅者记得曾在星海流浪。",
       sourceConversationId: conversation.id,
       messageCount: 2,
     });
+    const detailCheck = await getConversationDetail(7, conversation.id);
+    assert.equal(detailCheck.mode, "group");
+    assert.equal(detailCheck.cast?.length, 2);
 
-    let seenBody = "";
+    const forwardedBodies: string[] = [];
     const fetcher: typeof fetch = async (_input, init) => {
       const url = String(_input);
       if (url.endsWith("/v1/embeddings")) {
@@ -252,11 +255,27 @@ test("chat route builds group context and retrieves each member's knowledge", as
           usage: { prompt_tokens: 3, total_tokens: 3 },
         });
       }
-      seenBody = String(init?.body);
-      return new Response("data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
+      const body = String(init?.body);
+      forwardedBodies.push(body);
+      const parsed = JSON.parse(body) as { stream?: boolean; speakerId?: string };
+      if (parsed.stream === false) {
+        return Response.json({
+          choices: [
+            {
+              message: {
+                content: '{"speakers":["星河旅者","燕中学伴"]}',
+              },
+            },
+          ],
+        });
+      }
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"你好"}}]}\n\ndata: [DONE]\n\n',
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
     };
 
-    const response = await handleChatCompletion(
+    const scheduleResponse = await handleChatCompletion(
       authenticatedRequest(
         "/api/chat/completions",
         {
@@ -264,6 +283,117 @@ test("chat route builds group context and retrieves each member's knowledge", as
           messages: [{ role: "user", content: "聊聊星空和校园" }],
           knowledge: true,
           conversationId: conversation.id,
+          groupSchedule: true,
+        },
+        "https://ai.example.test",
+        ["deepseek-chat", "BAAI/bge-m3"],
+      ),
+      config,
+      fetcher,
+    );
+    if (scheduleResponse.status !== 200) {
+      throw new Error(`expected 200, got ${scheduleResponse.status}: ${await scheduleResponse.text()}`);
+    }
+    const schedule = await scheduleResponse.json();
+    assert.deepEqual(schedule.speakers, [
+      { id: first.id, name: first.name },
+      { id: second.id, name: second.name },
+    ]);
+
+    const scheduleBody = JSON.parse(forwardedBodies[0]) as {
+      stream: boolean;
+      messages: { role: string; content: string }[];
+    };
+    assert.equal(scheduleBody.stream, false);
+    assert.match(scheduleBody.messages[0].content, /调度器/);
+    assert.match(scheduleBody.messages[0].content, /星河旅者/);
+    assert.match(scheduleBody.messages[0].content, /燕中学伴/);
+    assert.match(scheduleBody.messages[0].content, /主持人不发言/);
+
+    const speakerResponses: Response[] = [];
+    for (const speaker of [first, second]) {
+      const response = await handleChatCompletion(
+        authenticatedRequest(
+          "/api/chat/completions",
+          {
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: "聊聊星空和校园" }],
+            knowledge: true,
+            conversationId: conversation.id,
+            speakerId: speaker.id,
+          },
+          "https://ai.example.test",
+          ["deepseek-chat", "BAAI/bge-m3"],
+        ),
+        config,
+        fetcher,
+      );
+      assert.equal(response.status, 200);
+      speakerResponses.push(response);
+    }
+    assert.equal((await speakerResponses[0].text()).includes("你好"), true);
+
+    const speakerBodies = forwardedBodies
+      .slice(1)
+      .map((raw) => JSON.parse(raw) as { messages: { role: string; content: string }[] });
+    assert.equal(speakerBodies.length, 2);
+    const firstBody = speakerBodies.find((item) => item.messages[0].content.startsWith("你是「星河旅者」"));
+    const secondBody = speakerBodies.find((item) => item.messages[0].content.startsWith("你是「燕中学伴」"));
+    assert.ok(firstBody && secondBody);
+    assert.match(firstBody.messages[0].content, /你是「星河旅者」/);
+    assert.match(firstBody.messages[0].content, /在场的其他成员/);
+    assert.match(firstBody.messages[0].content, /燕中学伴/);
+    assert.match(firstBody.messages[0].content, /旅者记得曾在星海流浪/);
+    assert.match(firstBody.messages[0].content, /星海资料/);
+    assert.doesNotMatch(firstBody.messages[0].content, /导演记得/);
+    assert.match(secondBody.messages[0].content, /你是「燕中学伴」/);
+    assert.match(secondBody.messages[0].content, /校园资料/);
+    assert.doesNotMatch(secondBody.messages[0].content, /旅者记得/);
+    assert.equal(firstBody.messages.at(-1)?.role, "user");
+  });
+});
+
+test("group speaker names fall back to a member when the scheduler output is invalid", async () => {
+  await withDataDir(async () => {
+    const first = {
+      id: "preset-star-traveler",
+      name: "星河旅者",
+      description: "星海旅者",
+      firstMessage: "欢迎",
+    };
+    const second = {
+      id: "preset-study-buddy",
+      name: "燕中学伴",
+      description: "校园伙伴",
+      firstMessage: "嗨",
+    };
+    const conversation = await createConversation(7, { mode: "group", cast: [first, second] });
+    const fetcher: typeof fetch = async (_input, init) => {
+      const url = String(_input);
+      if (url.endsWith("/v1/embeddings")) {
+        return Response.json({
+          object: "list",
+          model: "BAAI/bge-m3",
+          data: [{ object: "embedding", index: 0, embedding: [1, 1, 0] }],
+          usage: { prompt_tokens: 3, total_tokens: 3 },
+        });
+      }
+      const body = String(init?.body);
+      const parsed = JSON.parse(body) as { stream?: boolean };
+      if (parsed.stream === false) {
+        return Response.json({ choices: [{ message: { content: "我选不出人。" } }] });
+      }
+      return new Response("data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
+    };
+    const response = await handleChatCompletion(
+      authenticatedRequest(
+        "/api/chat/completions",
+        {
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: "随便聊聊" }],
+          knowledge: true,
+          conversationId: conversation.id,
+          groupSchedule: true,
         },
         "https://ai.example.test",
         ["deepseek-chat", "BAAI/bge-m3"],
@@ -272,15 +402,8 @@ test("chat route builds group context and retrieves each member's knowledge", as
       fetcher,
     );
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get("x-yan-knowledge-hits"), "2");
-    const forwarded = JSON.parse(seenBody);
-    assert.match(forwarded.messages[0].content, /多人角色扮演群聊/);
-    assert.match(forwarded.messages[0].content, /星河旅者/);
-    assert.match(forwarded.messages[0].content, /燕中学伴/);
-    assert.match(forwarded.messages[0].content, /【导演】/);
-    assert.match(forwarded.messages[1].content, /导演记得/);
-    assert.match(forwarded.messages[2].content, /星河旅者 · 星海资料/);
-    assert.match(forwarded.messages[2].content, /燕中学伴 · 校园资料/);
-    assert.equal(forwarded.messages[3].role, "user");
+    const body = (await response.json()) as { speakers: { id: string }[] };
+    assert.ok(body.speakers.length >= 1 && body.speakers.length <= 2);
+    assert.ok(body.speakers.every((speaker) => [first.id, second.id].includes(speaker.id)));
   });
 });

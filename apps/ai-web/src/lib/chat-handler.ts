@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { forwardChatCompletion, parseAiChatRequest } from "@/lib/chat";
+import {
+  forwardChatCompletion,
+  forwardChatCompletionJson,
+  parseAiChatRequest,
+  type AiChatMessage,
+  type AiChatRequest,
+} from "@/lib/chat";
 import { requestEmbeddings } from "@/lib/embedding";
 import { resolveEmbeddingModel } from "@/lib/knowledge-embedding";
-import { getConversationDetail } from "@/lib/conversations";
+import {
+  getConversationDetail,
+  type ConversationDetail,
+  type StoredMessage,
+} from "@/lib/conversations";
 import {
   searchPersonaKnowledge,
   searchUserKnowledge,
@@ -46,20 +56,41 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   if (!parsed) return NextResponse.json({ error: "模型或消息格式无效。" }, { status: 400 });
   let knowledgeHits = 0;
   const candidate = body as Record<string, unknown> | null;
-  if (candidate?.knowledge === true && typeof candidate.conversationId === "string") {
+  let conversationDetail: ConversationDetail | null = null;
+  if (typeof candidate?.conversationId === "string") {
     try {
-      const detail = await getConversationDetail(session.subject.userId, candidate.conversationId);
+      conversationDetail = await getConversationDetail(session.subject.userId, candidate.conversationId);
+    } catch {
+      // 会话不存在时退回普通对话，不阻断请求。
+    }
+  }
+  if (conversationDetail?.mode === "group" && conversationDetail.cast?.length) {
+    if (candidate?.groupSchedule === true) {
+      return handleGroupSchedule(request, config, session, parsed, conversationDetail, fetcher);
+    }
+    if (typeof candidate?.speakerId === "string") {
+      return handleGroupSpeaker(
+        request,
+        config,
+        session,
+        parsed,
+        conversationDetail,
+        candidate.speakerId,
+        fetcher,
+      );
+    }
+  } else {
+    // 非群聊会话继续走原有对话流程。
+  }
+  if (candidate?.knowledge === true && conversationDetail) {
+    try {
+      const detail = conversationDetail;
       const persona = detail.persona;
       const query = [...parsed.messages].reverse().find((message) => message.role === "user")?.content;
-      const hasGroup = detail.mode === "group" && Boolean(detail.cast?.length);
-      if ((persona || hasGroup) && query) {
+      if (persona && query) {
         const injections: { role: "system"; content: string }[] = [];
-        if (hasGroup && detail.cast) {
-          injections.push({ role: "system", content: buildGroupPrompt(detail.cast, detail.director) });
-        }
-        const memoryPersona = hasGroup ? detail.director : persona;
-        if (memoryPersona) {
-          const memory = await getPersonaMemory(session.subject.userId, memoryPersona.id).catch(() => null);
+        if (persona) {
+          const memory = await getPersonaMemory(session.subject.userId, persona.id).catch(() => null);
           if (memory?.summary) {
             injections.push({ role: "system", content: `【角色长期记忆】\n${memory.summary}` });
           }
@@ -77,40 +108,17 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
           const userHits = await searchUserKnowledge(
             session.subject.userId,
             embedded.vectors[0],
-            hasGroup ? 2 : 4,
+            4,
             Number.isFinite(threshold) ? threshold : 0.3,
           );
-          let hits: KnowledgeHit[];
-          if (hasGroup && detail.cast) {
-            const castHits = await Promise.all(
-              detail.cast.map((castPersona) =>
-                searchPersonaKnowledge(
-                  session.subject.userId,
-                  castPersona.id,
-                  embedded.vectors[0],
-                  2,
-                  Number.isFinite(threshold) ? threshold : 0.3,
-                ).then((results) =>
-                  results.map((hit) => ({
-                    ...hit,
-                    documentName: `${castPersona.name} · ${hit.documentName}`,
-                  })),
-                ),
-              ),
-            );
-            hits = dedupeHits([...castHits.flat(), ...userHits]).slice(0, 6);
-          } else if (persona) {
-            const personaHits = await searchPersonaKnowledge(
-              session.subject.userId,
-              persona.id,
-              embedded.vectors[0],
-              4,
-              Number.isFinite(threshold) ? threshold : 0.3,
-            );
-            hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
-          } else {
-            hits = [];
-          }
+          const personaHits = await searchPersonaKnowledge(
+            session.subject.userId,
+            persona.id,
+            embedded.vectors[0],
+            4,
+            Number.isFinite(threshold) ? threshold : 0.3,
+          );
+          const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
           if (hits.length > 0) {
             injections.push({ role: "system", content: buildKnowledgePrompt(hits) });
             knowledgeHits = hits.length;
@@ -146,6 +154,253 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   }
 }
 
+async function handleGroupSchedule(
+  request: NextRequest,
+  config: ChatHandlerConfig,
+  session: AiSession,
+  parsed: AiChatRequest,
+  detail: ConversationDetail,
+  fetcher: typeof fetch,
+): Promise<Response> {
+  const cast = detail.cast ?? [];
+  const history = ensureLatestUser(detail.messages, parsed);
+  const schedulerMessages: AiChatMessage[] = [
+    { role: "system", content: buildSchedulerPrompt(cast, detail.director) },
+    ...formatGroupHistory(history, cast).slice(-16),
+  ];
+  const schedulerResponse = await forwardChatCompletionJson(
+    config.yanCoreApiBaseUrl,
+    session.credential.accessKey,
+    { model: parsed.model, messages: schedulerMessages },
+    fetcher,
+    request.signal,
+  );
+  if (schedulerResponse.status === 401 || schedulerResponse.status === 403) {
+    const revoked = NextResponse.json(
+      { error: "登录会话已失效或已被撤销。", code: "SESSION_REVOKED" },
+      { status: 401 },
+    );
+    revoked.cookies.set(SESSION_COOKIE, "", cookieOptions(config.publicUrl, 0));
+    return revoked;
+  }
+  const schedulerBody =
+    schedulerResponse.status === 200
+      ? (schedulerResponse.body as
+          | { choices?: { message?: { content?: unknown } }[] }
+          | null
+          | undefined)
+      : null;
+  const speakers = schedulerBody
+    ? parseSpeakerNames(schedulerBody.choices?.[0]?.message?.content, cast)
+    : [];
+  const selectedSpeakers = speakers.length > 0 ? speakers.slice(0, 2) : pickFallbackSpeakers(cast);
+  return NextResponse.json({
+    speakers: selectedSpeakers.map((persona) => ({ id: persona.id, name: persona.name })),
+  });
+}
+
+async function handleGroupSpeaker(
+  request: NextRequest,
+  config: ChatHandlerConfig,
+  session: AiSession,
+  parsed: AiChatRequest,
+  detail: ConversationDetail,
+  speakerId: string,
+  fetcher: typeof fetch,
+): Promise<Response> {
+  const cast = detail.cast ?? [];
+  const speaker = cast.find((persona) => persona.id === speakerId);
+  if (!speaker) return NextResponse.json({ error: "发言人不存在。" }, { status: 400 });
+  const history = ensureLatestUser(detail.messages, parsed);
+  const query = [...history].reverse().find((message) => message.role === "user")?.content ?? "";
+  let userHits: KnowledgeHit[] = [];
+  let personaHits: KnowledgeHit[] = [];
+  const embeddingModel = resolveEmbeddingModel(session);
+  if (embeddingModel && query) {
+    try {
+      const embedded = await requestEmbeddings(
+        config.yanCoreApiBaseUrl,
+        session.credential.accessKey,
+        embeddingModel,
+        [query],
+        fetcher,
+      );
+      const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
+      const safeThreshold = Number.isFinite(threshold) ? threshold : 0.3;
+      userHits = await searchUserKnowledge(session.subject.userId, embedded.vectors[0], 2, safeThreshold);
+      personaHits = await searchPersonaKnowledge(
+        session.subject.userId,
+        speaker.id,
+        embedded.vectors[0],
+        3,
+        safeThreshold,
+      );
+    } catch {
+      // 知识库故障不阻断群聊。
+    }
+  }
+
+  const systemBlocks = [buildGroupSpeakerPrompt(speaker, cast, detail.director)];
+  const memory = await getPersonaMemory(session.subject.userId, speaker.id).catch(() => null);
+  if (memory?.summary) systemBlocks.push(`【角色长期记忆】\n${memory.summary}`);
+  const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
+  if (hits.length > 0) systemBlocks.push(buildKnowledgePrompt(hits));
+  const upstream = await forwardChatCompletion(
+    config.yanCoreApiBaseUrl,
+    session.credential.accessKey,
+    {
+      model: parsed.model,
+      messages: [
+        { role: "system", content: systemBlocks.join("\n\n").slice(0, 12_000) },
+        ...formatGroupHistory(history, cast),
+      ],
+    },
+    fetcher,
+    request.signal,
+  );
+  if (upstream.status === 401 || upstream.status === 403) {
+    await upstream.body?.cancel();
+    const revoked = NextResponse.json(
+      { error: "登录会话已失效或已被撤销。", code: "SESSION_REVOKED" },
+      { status: 401 },
+    );
+    revoked.cookies.set(SESSION_COOKIE, "", cookieOptions(config.publicUrl, 0));
+    return revoked;
+  }
+  const headers = new Headers(upstream.headers);
+  headers.set("Cache-Control", "no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(upstream.body, { status: upstream.status, headers });
+}
+
+function ensureLatestUser(history: StoredMessage[], parsed: AiChatRequest): StoredMessage[] {
+  if ([...history].reverse().some((message) => message.role === "user")) return history;
+  const fallback = [...parsed.messages].reverse().find((message) => message.role === "user")?.content;
+  if (!fallback) return history;
+  return [...history, { id: `pending-${Date.now()}`, role: "user", content: fallback }];
+}
+
+function buildSchedulerPrompt(cast: Persona[], director?: Persona): string {
+  const lines = [
+    "你是多人群聊的调度器，只决定本轮由谁发言，不参与对话，也不要生成任何台词。",
+    "",
+    "群聊成员：",
+    ...cast.map((persona) => `- ${persona.name}：${persona.description.slice(0, 120)}`),
+  ];
+  if (director) {
+    lines.push(
+      "",
+      `主持人（只营造场景氛围，不发言）：${director.name}`,
+      director.description.slice(0, 200),
+    );
+  }
+  lines.push(
+    "",
+    "根据用户消息和剧情需要，选择 1 到 2 位最合适的成员发言：",
+    "- 只有一位成员适合回应时，只选 1 位；",
+    "- 多位成员都在场且都能自然回应时，最多选 2 位；",
+    "- 不要选择主持人，主持人不发言；",
+    "- 不要编造成员名称。",
+    "",
+    '只输出 JSON，不要解释：{"speakers":["成员A"]} 或 {"speakers":["成员A","成员B"]}',
+  );
+  return lines.join("\n");
+}
+
+export function parseSpeakerNames(raw: unknown, cast: Persona[]): Persona[] {
+  let speakers: unknown[] = [];
+  if (typeof raw === "string") {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]) as { speakers?: unknown };
+        if (Array.isArray(parsed.speakers)) speakers = parsed.speakers;
+      } catch {
+        // 解析失败走回退。
+      }
+    }
+  } else if (raw && typeof raw === "object") {
+    const candidate = raw as { speakers?: unknown };
+    if (Array.isArray(candidate.speakers)) speakers = candidate.speakers;
+  }
+  const selected: Persona[] = [];
+  for (const item of speakers) {
+    if (typeof item !== "string") continue;
+    const name = item.trim();
+    if (!name) continue;
+    const persona =
+      cast.find((candidate) => candidate.name === name) ??
+      cast.find((candidate) => name.startsWith(candidate.name) || candidate.name.startsWith(name));
+    if (persona && !selected.some((picked) => picked.id === persona.id)) selected.push(persona);
+    if (selected.length >= 2) break;
+  }
+  return selected;
+}
+
+function pickFallbackSpeakers(cast: Persona[]): Persona[] {
+  const pool = [...cast];
+  const first = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+  if (!first) return [];
+  const second =
+    pool.length > 0 && Math.random() < 0.5
+      ? pool.splice(Math.floor(Math.random() * pool.length), 1)[0]
+      : undefined;
+  return second ? [first, second] : [first];
+}
+
+function formatGroupHistory(messages: StoredMessage[], cast: Persona[]): AiChatMessage[] {
+  const lines = messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => {
+      if (message.role === "user") {
+        return { role: "user" as const, content: message.content };
+      }
+      const speaker = message.personaId
+        ? cast.find((persona) => persona.id === message.personaId)
+        : undefined;
+      return {
+        role: "assistant" as const,
+        content: speaker ? `${speaker.name}：${message.content}` : message.content,
+      };
+    });
+  const recent = lines.slice(-24);
+  let total = 0;
+  const trimmed: AiChatMessage[] = [];
+  for (const line of recent.reverse()) {
+    if (total + line.content.length > 24_000) break;
+    trimmed.push(line);
+    total += line.content.length;
+  }
+  return trimmed.reverse();
+}
+
+function buildGroupSpeakerPrompt(speaker: Persona, cast: Persona[], director?: Persona): string {
+  const optional = (title: string, value: string | undefined) => (value?.trim() ? `${title}\n${value}` : "");
+  const lines = [
+    `你是「${speaker.name}」，正在与用户和其他成员进行群聊。`,
+    `【角色卡】\n${speaker.description}`,
+    optional("【世界观】", speaker.world),
+    optional("【当前场景】", speaker.scenario),
+    optional("【故事线】", speaker.plot),
+    optional("【说话风格】", speaker.style),
+    optional("【示例对话】", speaker.examples),
+    "",
+    "在场的其他成员：",
+    cast
+      .filter((persona) => persona.id !== speaker.id)
+      .map((persona) => `- ${persona.name}：${persona.description.slice(0, 100)}`)
+      .join("\n") || "（暂无其他成员）",
+  ];
+  if (director) {
+    lines.push("", `主持人背景（只营造场景氛围，不替角色发言）：${director.description.slice(0, 200)}`);
+  }
+  lines.push(
+    "",
+    "规则：直接输出你作为该角色要说的话，不要带「角色名：」前缀，不要替其他角色发言，不要跳回调度视角；用中文回复，保持角色一致。",
+  );
+  return lines.join("\n\n").slice(0, 8000);
+}
+
 function buildKnowledgePrompt(hits: KnowledgeHit[]): string {
   const lines = ["以下是角色资料库中检索到的片段。回答时优先使用这些资料，资料不足就明确说明："];
   let used = 0;
@@ -165,25 +420,4 @@ function dedupeHits(hits: KnowledgeHit[]): KnowledgeHit[] {
     seen.add(hit.text);
     return true;
   });
-}
-
-function buildGroupPrompt(cast: Persona[], director?: Persona): string {
-  const lines = ["你正在参与一场多人角色扮演群聊，以下是全部成员设定：", ""];
-  for (const persona of cast) {
-    lines.push(`《${persona.name}》`);
-    lines.push(persona.description);
-    if (persona.style) lines.push(`说话风格：${persona.style}`);
-    if (persona.world) lines.push(`世界观：${persona.world}`);
-    lines.push("");
-  }
-  if (director) {
-    lines.push("【导演】");
-    lines.push(director.description);
-    if (director.style) lines.push(`导演风格：${director.style}`);
-    lines.push("");
-  }
-  lines.push(
-    "规则：每次由其中一个角色发言，发言以「角色名：」开头；不要替其他角色说话；导演负责旁白、场景与节奏推进；用中文回复，保持角色一致。",
-  );
-  return lines.join("\n").slice(0, 8000);
 }
