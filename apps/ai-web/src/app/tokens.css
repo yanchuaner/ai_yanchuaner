@@ -1,0 +1,17 @@
+:root {
+  color-scheme: dark;
+
+  /* 与 Lab 对齐的语义令牌名，颜色保持燕中 AI 的暗色星空方向。 */
+  --bg: #070b13;
+  --surface: #101824;
+  --surface-muted: #0c131d;
+  --surface-strong: #151f2d;
+  --text: #f4f7fb;
+  --text-muted: #9eacbc;
+  --line: #2b394b;
+  --brand: #67d4e8;
+  --accent: #f0c66b;
+  --danger: #ff8c8c;
+  --focus: #f0c66b;
+  --brand-ink: #061016;
+}
