@@ -3,6 +3,7 @@
 export type VoiceEndpointSettings = {
   baseUrl: string;
   model: string;
+  voice?: string;
   apiKey: string;
 };
 
@@ -44,7 +45,7 @@ export async function forwardTextToSpeech(
       Authorization: `Bearer ${settings.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model: settings.model, input: text, voice: "alloy" }),
+    body: JSON.stringify({ model: settings.model, input: text, voice: settings.voice ?? "alloy" }),
   });
   if (!response.ok) throw new Error(`语音合成失败（${response.status}）。`);
   const audio = await response.arrayBuffer();

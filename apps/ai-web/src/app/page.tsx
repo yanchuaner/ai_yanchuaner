@@ -67,7 +67,7 @@ type ApiKeyItem = {
 
 type VoiceSettingsView = {
   asr: { baseUrl: string; model: string } | null;
-  tts: { baseUrl: string; model: string } | null;
+  tts: { baseUrl: string; model: string; voice?: string } | null;
   updatedAt: number;
 };
 
@@ -122,6 +122,7 @@ export default function HomePage() {
     asrKey: "",
     ttsBaseUrl: "",
     ttsModel: "",
+    ttsVoice: "",
     ttsKey: "",
   });
   const [voiceBusy, setVoiceBusy] = useState(false);
@@ -271,6 +272,7 @@ export default function HomePage() {
         asrKey: "",
         ttsBaseUrl: settings.tts?.baseUrl ?? "https://api.siliconflow.cn/v1",
         ttsModel: settings.tts?.model ?? "FunAudioLLM/CosyVoice2-0.5B",
+        ttsVoice: settings.tts?.voice ?? "FunAudioLLM/CosyVoice2-0.5B:alex",
         ttsKey: "",
       });
     } catch {}
@@ -288,10 +290,11 @@ export default function HomePage() {
         apiKey: voiceForm.asrKey || undefined,
       };
     }
-    if (voiceForm.ttsBaseUrl.trim() || voiceForm.ttsModel.trim() || voiceForm.ttsKey) {
+    if (voiceForm.ttsBaseUrl.trim() || voiceForm.ttsModel.trim() || voiceForm.ttsVoice.trim() || voiceForm.ttsKey) {
       payload.tts = {
         baseUrl: voiceForm.ttsBaseUrl.trim(),
         model: voiceForm.ttsModel.trim(),
+        voice: voiceForm.ttsVoice.trim() || undefined,
         apiKey: voiceForm.ttsKey || undefined,
       };
     }
@@ -339,7 +342,7 @@ export default function HomePage() {
         ...current,
         ...(section === "asr"
           ? { asrBaseUrl: "", asrModel: "", asrKey: "" }
-          : { ttsBaseUrl: "", ttsModel: "", ttsKey: "" }),
+          : { ttsBaseUrl: "", ttsModel: "", ttsVoice: "", ttsKey: "" }),
       }));
     } catch (reason) {
       setVoiceError(reason instanceof Error ? reason.message : "清除失败。");
@@ -1450,6 +1453,15 @@ export default function HomePage() {
                   value={voiceForm.ttsModel}
                   onChange={(event) => setVoiceForm({ ...voiceForm, ttsModel: event.target.value })}
                   placeholder="FunAudioLLM/CosyVoice2-0.5B"
+                />
+              </label>
+              <label>
+                <span>音色</span>
+                <input
+                  type="text"
+                  value={voiceForm.ttsVoice}
+                  onChange={(event) => setVoiceForm({ ...voiceForm, ttsVoice: event.target.value })}
+                  placeholder="FunAudioLLM/CosyVoice2-0.5B:alex"
                 />
               </label>
               <label className="tool-full">

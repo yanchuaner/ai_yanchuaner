@@ -5,6 +5,7 @@ import { forwardSpeechToText, forwardTextToSpeech } from "./voice";
 const settings = {
   baseUrl: "https://api.openai.com/v1",
   model: "whisper-1",
+  voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
   apiKey: "sk-voice-secret",
 };
 
@@ -63,5 +64,9 @@ test("text-to-speech returns audio bytes and content type", async () => {
   assert.deepEqual(Array.from(new Uint8Array(result.audio)), [9, 8, 7]);
   assert.equal(result.contentType, "audio/mpeg");
   assert.doesNotMatch(seenBody, /sk-voice-secret/);
-  assert.deepEqual(JSON.parse(seenBody), { model: "whisper-1", input: "你好", voice: "alloy" });
+  assert.deepEqual(JSON.parse(seenBody), {
+    model: "whisper-1",
+    input: "你好",
+    voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
+  });
 });

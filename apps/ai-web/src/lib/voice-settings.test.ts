@@ -31,12 +31,18 @@ test("voice settings store encrypted keys and never return them", async () => {
       SECRET,
       {
         asr: { baseUrl: "https://api.openai.com/v1", model: "whisper-1", apiKey: "sk-asr-secret" },
-        tts: { baseUrl: "https://api.openai.com/v1", model: "tts-1", apiKey: "sk-tts-secret" },
+        tts: {
+          baseUrl: "https://api.openai.com/v1",
+          model: "tts-1",
+          voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
+          apiKey: "sk-tts-secret",
+        },
       },
       false,
     );
     assert.equal(saved.asr?.model, "whisper-1");
     assert.equal(saved.asr?.baseUrl, "https://api.openai.com/v1");
+    assert.equal(saved.tts?.voice, "FunAudioLLM/CosyVoice2-0.5B:alex");
     assert.equal(JSON.stringify(saved).includes("sk-"), false);
 
     const asr = await getDecryptedVoiceProvider(7, "asr", SECRET);
