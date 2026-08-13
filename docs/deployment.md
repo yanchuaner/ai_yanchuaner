@@ -212,7 +212,7 @@ tail -n 50 /var/log/ai-yanchuaner-backup.log
 
 - 文本和图片目前都是单上游，渠道故障时无法自动切换。
 - `1 vCPU / 2 GiB` 没有多人并发余量，swap 只能避免瞬时 OOM，不能提升性能。
-- 暑期冻结期间不升级 LiteLLM、Open WebUI、PostgreSQL 主版本，不接入 Agent、BYOK 或开放注册。
+- 暑期冻结期间不升级 LiteLLM、Open WebUI、PostgreSQL 主版本，不接入 Agent、模型 API Key 托管（BYOK）或开放注册。
 - 上游价格变化后必须同步成本配置，否则 LiteLLM 的美元预算不再准确。
 - 生产服务器使用本地固定标签的 `docker-compose.override.yml` 适配离线导入镜像；该文件只属于服务器，不提交仓库。升级镜像前必须同时核对仓库摘要与服务器标签。
 - AI 证书当前有效至 2026-10-13，Certbot 定时续期已启用；到期前必须完成一次续期演练。不要为了自动化把 DNS API 凭据随意留在服务器。
