@@ -6,17 +6,18 @@ import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
 export type VoiceProviderSettings = {
   baseUrl: string;
   model: string;
+  voice?: string;
   apiKeyEncrypted: string;
 };
 
 export type VoiceSettingsInput = {
   asr?: { baseUrl: string; model: string; apiKey?: string } | null;
-  tts?: { baseUrl: string; model: string; apiKey?: string } | null;
+  tts?: { baseUrl: string; model: string; voice?: string; apiKey?: string } | null;
 };
 
 export type VoiceSettingsView = {
   asr: { baseUrl: string; model: string } | null;
-  tts: { baseUrl: string; model: string } | null;
+  tts: { baseUrl: string; model: string; voice?: string } | null;
   updatedAt: number;
 };
 
@@ -37,7 +38,10 @@ function isValidStore(value: unknown): value is VoiceStore {
   return typeof (value as Record<string, unknown>).updatedAt === "number";
 }
 
-export function validateVoiceProvider(input: { baseUrl: string; model: string; apiKey?: string }, allowInsecure: boolean): string | null {
+export function validateVoiceProvider(
+  input: { baseUrl: string; model: string; voice?: string; apiKey?: string },
+  allowInsecure: boolean,
+): string | null {
   let url: URL;
   try {
     url = new URL(input.baseUrl);
@@ -48,6 +52,9 @@ export function validateVoiceProvider(input: { baseUrl: string; model: string; a
     return "服务地址必须使用 HTTPS。";
   }
   if (!input.model.trim() || input.model.length > 128) return "模型名称无效。";
+  if (input.voice !== undefined && (input.voice.length === 0 || input.voice.length > 64)) {
+    return "音色名称无效。";
+  }
   if (input.apiKey !== undefined && (input.apiKey.length === 0 || input.apiKey.length > 512)) {
     return "API Key 无效。";
   }
@@ -62,7 +69,7 @@ export async function getVoiceSettings(userId: number): Promise<VoiceSettingsVie
   const store = await readStore(userId);
   return {
     asr: store.asr ? { baseUrl: store.asr.baseUrl, model: store.asr.model } : null,
-    tts: store.tts ? { baseUrl: store.tts.baseUrl, model: store.tts.model } : null,
+    tts: store.tts ? { baseUrl: store.tts.baseUrl, model: store.tts.model, voice: store.tts.voice } : null,
     updatedAt: store.updatedAt,
   };
 }
@@ -76,7 +83,10 @@ export async function updateVoiceSettings(
   const store = await readStore(userId);
   const apply = (
     section: "asr" | "tts",
-    value: { baseUrl: string; model: string; apiKey?: string } | null | undefined,
+    value:
+      | { baseUrl: string; model: string; voice?: string; apiKey?: string }
+      | null
+      | undefined,
   ) => {
     if (value === null) {
       delete store[section];
@@ -85,15 +95,21 @@ export async function updateVoiceSettings(
     if (!value) return;
     const invalid = validateVoiceProvider(value, allowInsecure);
     if (invalid) throw new Error(invalid);
+    const existing = store[section];
     const baseUrl = value.baseUrl.trim().replace(/\/+$/, "");
     const model = value.model.trim();
-    const existing = store[section];
+    const voice = value.voice?.trim() || existing?.voice;
     const apiKey =
       value.apiKey !== undefined && value.apiKey.length > 0
         ? encryptSecret(value.apiKey.trim(), masterSecret)
         : existing?.apiKeyEncrypted;
     if (!apiKey) throw new Error("请填写 API Key，或留空保持不变。");
-    store[section] = { baseUrl, model, apiKeyEncrypted: apiKey };
+    store[section] = {
+      baseUrl,
+      model,
+      voice: voice || undefined,
+      apiKeyEncrypted: apiKey,
+    };
   };
   apply("asr", input.asr);
   apply("tts", input.tts);
@@ -106,11 +122,11 @@ export async function getDecryptedVoiceProvider(
   userId: number,
   section: "asr" | "tts",
   masterSecret: string,
-): Promise<{ baseUrl: string; model: string; apiKey: string } | null> {
+): Promise<{ baseUrl: string; model: string; voice?: string; apiKey: string } | null> {
   const store = await readStore(userId);
   const settings = store[section];
   if (!settings) return null;
   const apiKey = decryptSecret(settings.apiKeyEncrypted, masterSecret);
   if (!apiKey) return null;
-  return { baseUrl: settings.baseUrl, model: settings.model, apiKey };
+  return { baseUrl: settings.baseUrl, model: settings.model, voice: settings.voice, apiKey };
 }
