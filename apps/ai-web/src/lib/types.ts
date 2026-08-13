@@ -31,3 +31,22 @@ export type PersonaWithMeta = {
   favorite: boolean;
   recentConversationId?: string;
 };
+
+export type KnowledgeDocumentSummary = {
+  id: string;
+  kbId: string;
+  name: string;
+  source: "paste" | "file";
+  status: "ready" | "error";
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+  chunkCount: number;
+  tokenCount: number;
+};
+
+export type PersonaKnowledge = {
+  knowledgeBase: { id: string; name: string; embeddingModel?: string } | null;
+  documents: KnowledgeDocumentSummary[];
+  chunkCount: number;
+};

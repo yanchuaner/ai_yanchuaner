@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { NextRequest } from "next/server";
 import { handleChatCompletion } from "@/lib/chat-handler";
+import { createConversation } from "@/lib/conversations";
+import { addKnowledgeDocument, searchPersonaKnowledge } from "@/lib/knowledge-library";
 import { seal, type AiSession } from "@/lib/session";
 
 const sessionSecret = "01234567890123456789012345678901";
@@ -12,7 +17,12 @@ const config = {
   yanCoreApiBaseUrl: new URL("https://api.example.test"),
 };
 
-function authenticatedRequest(path: string, body?: unknown, origin = "https://ai.example.test") {
+function authenticatedRequest(
+  path: string,
+  body?: unknown,
+  origin = "https://ai.example.test",
+  models: string[] = ["deepseek-chat"],
+) {
   const expiresAt = Math.floor(Date.now() / 1000) + 600;
   const session: AiSession = {
     identity: { sub: "member-1", name: "Member", role: "alumni" },
@@ -21,7 +31,7 @@ function authenticatedRequest(path: string, body?: unknown, origin = "https://ai
     grantExpiresAt: expiresAt,
     credential: {
       accessKey: `sk-yc_${"a".repeat(64)}`,
-      models: ["deepseek-chat"],
+      models,
       quotaUnits: 50000,
       expiresAt,
     },
@@ -33,6 +43,19 @@ function authenticatedRequest(path: string, body?: unknown, origin = "https://ai
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+async function withDataDir(run: () => Promise<void>) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ai-web-chat-route-"));
+  const previous = process.env.AI_WEB_DATA_DIR;
+  process.env.AI_WEB_DATA_DIR = dir;
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) delete process.env.AI_WEB_DATA_DIR;
+    else process.env.AI_WEB_DATA_DIR = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 test("chat route authenticates the encrypted session without exposing its key", async () => {
@@ -89,4 +112,67 @@ test("chat route keeps a model-service failure as a gateway error", async () => 
     messages: [{ role: "user", content: "hello" }],
   }), config, fetcher);
   assert.equal(response.status, 502);
+});
+
+test("chat route retrieves persona knowledge and injects it as context", async () => {
+  await withDataDir(async () => {
+    const persona = {
+      id: "preset-star-traveler",
+      name: "星河旅者",
+      description: "星海旅者",
+      firstMessage: "欢迎",
+    };
+    const conversation = await createConversation(7, { mode: "roleplay", persona });
+    await addKnowledgeDocument(
+      7,
+      persona.id,
+      persona.name,
+      { name: "往事", text: "校园时代她最怀念的是看星星的往事。" },
+      "BAAI/bge-m3",
+      () => Promise.resolve([[0, 1, 1]]),
+    );
+    const directHits = await searchPersonaKnowledge(7, persona.id, [0, 1, 1], 4, 0.3);
+    assert.equal(directHits.length, 1);
+
+    let seenBody = "";
+    let embeddingCalls = 0;
+    const fetcher: typeof fetch = async (_input, init) => {
+      const url = String(_input);
+      if (url.endsWith("/v1/embeddings")) {
+        embeddingCalls += 1;
+        return Response.json({
+          object: "list",
+          model: "BAAI/bge-m3",
+          data: [{ object: "embedding", index: 0, embedding: [0, 1, 1] }],
+          usage: { prompt_tokens: 5, total_tokens: 5 },
+        });
+      }
+      seenBody = String(init?.body);
+      return new Response("data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const response = await handleChatCompletion(
+      authenticatedRequest(
+        "/api/chat/completions",
+        {
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: "校园往事" }],
+          knowledge: true,
+          conversationId: conversation.id,
+        },
+        "https://ai.example.test",
+        ["deepseek-chat", "BAAI/bge-m3"],
+      ),
+      config,
+      fetcher,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(embeddingCalls, 1);
+    assert.equal(response.headers.get("x-yan-knowledge-hits"), "1");
+    const forwarded = JSON.parse(seenBody);
+    assert.match(forwarded.messages[0].content, /资料库/);
+    assert.match(forwarded.messages[0].content, /校园时代/);
+    assert.equal(forwarded.messages[1].role, "user");
+    assert.doesNotMatch(seenBody, /sk-yc_/);
+  });
 });
