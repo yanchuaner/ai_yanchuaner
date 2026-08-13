@@ -30,3 +30,20 @@ export function createSpeakerPrefixStripper(speakerName: string): SpeakerPrefixS
     },
   };
 }
+
+function escapePattern(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function containsOtherSpeakerSpeech(
+  content: string,
+  selfName: string,
+  otherNames: string[],
+): boolean {
+  const others = otherNames.filter((name) => name !== selfName && name.trim().length > 0);
+  if (others.length === 0) return false;
+  const pattern = new RegExp(
+    `(?:^|\\n)\\s*(?:[（(【\\[]\\s*)?(${others.map((name) => escapePattern(name.trim())).join("|")})\\s*[）)】\\]]?[:：]`,
+  );
+  return pattern.test(content);
+}
