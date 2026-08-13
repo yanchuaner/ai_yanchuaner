@@ -1,11 +1,13 @@
 "use client";
 
 import { CalendarClock, Copy, Pencil, Play, Star, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Drawer } from "@/components/drawer";
+import { KnowledgeDraftInput } from "@/components/knowledge-draft";
 import { KnowledgePanel } from "@/components/knowledge-panel";
 import { PersonaForm } from "@/components/persona-form";
 import { type Persona, type PersonaInput } from "@/lib/personas";
-import type { ConversationSummary, PersonaKnowledge } from "@/lib/types";
+import type { ConversationSummary, KnowledgeDraft, PersonaKnowledge } from "@/lib/types";
 import styles from "./persona-detail.module.css";
 
 type PersonaDetailProps = {
@@ -25,7 +27,7 @@ type PersonaDetailProps = {
   onToggleFavorite: () => void;
   onEdit: () => void;
   onSave: (input: PersonaInput) => Promise<void>;
-  onCreate: (input: PersonaInput) => Promise<void>;
+  onCreate: (input: PersonaInput, knowledge?: KnowledgeDraft) => Promise<void>;
   onDelete: () => void;
   onDuplicate: () => void;
 };
@@ -51,6 +53,7 @@ export function PersonaDetail({
   onDelete,
   onDuplicate,
 }: PersonaDetailProps) {
+  const [knowledgeDraft, setKnowledgeDraft] = useState<KnowledgeDraft>({ name: "", text: "" });
   const title = mode === "create" ? "新建角色" : mode === "edit" ? `编辑「${persona?.name}」` : persona?.name ?? "角色详情";
 
   return (
@@ -164,12 +167,15 @@ export function PersonaDetail({
         )}
 
         {mode === "create" && (
-          <PersonaForm
-            submitLabel="创建角色"
-            busy={busy}
-            onCancel={onClose}
-            onSubmit={onCreate}
-          />
+          <>
+            <PersonaForm
+              submitLabel="创建角色"
+              busy={busy}
+              onCancel={onClose}
+              onSubmit={async (input) => onCreate(input, knowledgeDraft)}
+            />
+            <KnowledgeDraftInput value={knowledgeDraft} onChange={setKnowledgeDraft} />
+          </>
         )}
       </div>
     </Drawer>
