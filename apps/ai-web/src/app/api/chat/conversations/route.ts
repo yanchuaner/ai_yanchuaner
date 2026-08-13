@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createConversation, listConversations, type ChatMode } from "@/lib/conversations";
+import {
+  createConversation,
+  listConversations,
+  type ChatMode,
+  type StoredConversation,
+} from "@/lib/conversations";
 import { isValidPersona, type Persona } from "@/lib/personas";
 import { requireAiSession } from "@/lib/session-guard";
 
@@ -20,6 +25,8 @@ export async function POST(request: NextRequest) {
   let persona: Persona | undefined;
   let cast: Persona[] | undefined;
   let director: Persona | undefined;
+  let world: StoredConversation["world"] | undefined;
+  let userRole: StoredConversation["userRole"] | undefined;
   if (body && typeof body === "object" && !Array.isArray(body)) {
     const candidate = body as Record<string, unknown>;
     if (candidate.mode !== undefined) {
@@ -48,6 +55,18 @@ export async function POST(request: NextRequest) {
       }
       director = candidate.director;
     }
+    if (candidate.world !== undefined) {
+      if (!candidate.world || typeof candidate.world !== "object") {
+        return NextResponse.json({ error: "世界观设定无效。" }, { status: 400 });
+      }
+      world = candidate.world as StoredConversation["world"];
+    }
+    if (candidate.userRole !== undefined) {
+      if (!candidate.userRole || typeof candidate.userRole !== "object") {
+        return NextResponse.json({ error: "用户角色设定无效。" }, { status: 400 });
+      }
+      userRole = candidate.userRole as StoredConversation["userRole"];
+    }
   }
   try {
     const conversation = await createConversation(guard.session.subject.userId, {
@@ -55,6 +74,8 @@ export async function POST(request: NextRequest) {
       persona,
       cast,
       director,
+      world,
+      userRole,
     });
     return NextResponse.json({ conversation });
   } catch (error) {
@@ -68,6 +89,10 @@ export async function POST(request: NextRequest) {
               ? "群聊成员无效，请选择 2 到 4 个不同角色。"
               : message === "director is invalid"
                 ? "主持人设定无效。"
+                : message === "world is invalid"
+                  ? "世界观设定无效。"
+                  : message === "userRole is invalid"
+                    ? "用户角色设定无效。"
                 : "创建会话失败。",
       },
       { status: 400 },

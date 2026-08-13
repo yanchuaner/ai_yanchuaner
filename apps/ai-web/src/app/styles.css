@@ -331,6 +331,24 @@
   grid-column: 1 / -1;
 }
 
+.tool-textarea {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.6;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.tool-textarea:focus {
+  border-color: var(--brand);
+  outline: none;
+}
+
 .ledger-list {
   list-style: none;
   margin: 0;

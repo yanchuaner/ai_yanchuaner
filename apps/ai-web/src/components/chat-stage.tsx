@@ -55,6 +55,8 @@ type ChatStageProps = {
   onOpenTools: () => void;
   voiceAsrEnabled: boolean;
   voiceTtsEnabled: boolean;
+  userRoleName?: string;
+  worldTitle?: string | null;
   speakingId: string | null;
   onAsr: (file: File) => Promise<string>;
   onSpeak: (messageId: string, text: string) => Promise<void>;
@@ -93,6 +95,8 @@ export function ChatStage({
   onOpenTools,
   voiceAsrEnabled,
   voiceTtsEnabled,
+  userRoleName,
+  worldTitle,
   speakingId,
   onAsr,
   onSpeak,
@@ -330,9 +334,11 @@ export function ChatStage({
                     {message.role === "user" ? <User size={16} aria-hidden="true" /> : speaker?.avatar || <Bot size={16} aria-hidden="true" />}
                   </span>
                   <div className={styles.messageBody}>
-                    {message.role === "assistant" && message.personaId && (
+                    {message.role === "user" && userRoleName ? (
+                      <small className={styles.speakerName}>{userRoleName}</small>
+                    ) : message.role === "assistant" && message.personaId ? (
                       <small className={styles.speakerName}>{speaker?.name || "群成员"}</small>
-                    )}
+                    ) : null}
                     {message.content ? (
                       <MessageContent content={message.content} />
                     ) : (
@@ -489,6 +495,7 @@ export function ChatStage({
             {activeMode === "group" && cast.length > 0 && (
               <section className={styles.contextSection}>
                 <h3>群聊成员</h3>
+                {worldTitle && <p className={styles.knowledgeHits}>世界：{worldTitle}</p>}
                 {cast.map((persona) => (
                   <p className={styles.castMember} key={persona.id}>
                     {persona.avatar || "🎭"} {persona.name}：{persona.description.slice(0, 60)}

@@ -28,6 +28,21 @@ export type StoredConversation = {
   persona?: Persona;
   cast?: Persona[];
   director?: Persona;
+  world?: {
+    worldId: string;
+    snapshot: {
+      title: string;
+      description: string;
+      timeline: string;
+      outline: string;
+    };
+  };
+  userRole?: {
+    name: string;
+    avatar?: string;
+    description: string;
+    sourcePersonaId?: string;
+  };
   pinned?: boolean;
   archived?: boolean;
   messages: StoredMessage[];
@@ -54,6 +69,8 @@ export type ConversationDetail = {
   persona?: Persona;
   cast?: Persona[];
   director?: Persona;
+  world?: StoredConversation["world"];
+  userRole?: StoredConversation["userRole"];
   pinned?: boolean;
   archived?: boolean;
   messages: StoredMessage[];
@@ -103,6 +120,45 @@ export function isValidStoredMessage(message: unknown): message is StoredMessage
   return true;
 }
 
+function isValidWorldSnapshot(value: unknown): value is StoredConversation["world"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.worldId !== "string" || candidate.worldId.length > 64) return false;
+  const snapshot = candidate.snapshot as Record<string, unknown> | undefined;
+  return (
+    !!snapshot &&
+    typeof snapshot.title === "string" &&
+    snapshot.title.length <= 60 &&
+    typeof snapshot.description === "string" &&
+    snapshot.description.length <= 6000 &&
+    typeof snapshot.timeline === "string" &&
+    snapshot.timeline.length <= 4000 &&
+    typeof snapshot.outline === "string" &&
+    snapshot.outline.length <= 12000
+  );
+}
+
+function isValidUserRole(value: unknown): value is StoredConversation["userRole"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.name !== "string" || candidate.name.trim().length === 0 || candidate.name.length > 32) {
+    return false;
+  }
+  if (typeof candidate.description !== "string" || candidate.description.length > 2000) {
+    return false;
+  }
+  if (candidate.avatar !== undefined && (typeof candidate.avatar !== "string" || candidate.avatar.length > 32)) {
+    return false;
+  }
+  if (
+    candidate.sourcePersonaId !== undefined &&
+    (typeof candidate.sourcePersonaId !== "string" || candidate.sourcePersonaId.length > 64)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 // 读取时兼容旧数据：没有 mode 的会话视为普通助手，无效的角色卡与消息直接丢弃。
 function normalizeConversation(raw: unknown): StoredConversation | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -135,6 +191,9 @@ function normalizeConversation(raw: unknown): StoredConversation | null {
         : undefined,
     director:
       candidate.mode === "group" && isValidPersona(candidate.director) ? candidate.director : undefined,
+    world: isValidWorldSnapshot(candidate.world) ? candidate.world : undefined,
+    userRole:
+      candidate.mode === "group" && isValidUserRole(candidate.userRole) ? candidate.userRole : undefined,
     pinned: candidate.pinned === true,
     archived: candidate.archived === true,
     messages: candidate.messages.filter(isValidStoredMessage),
@@ -210,6 +269,8 @@ export async function getConversationDetail(userId: number, conversationId: stri
     persona: conversation.persona,
     cast: conversation.cast,
     director: conversation.director,
+    world: conversation.world,
+    userRole: conversation.userRole,
     pinned: conversation.pinned,
     archived: conversation.archived,
     messages: conversation.messages.slice(),
@@ -229,6 +290,8 @@ export type CreateConversationOptions = {
   persona?: Persona;
   cast?: Persona[];
   director?: Persona;
+  world?: StoredConversation["world"];
+  userRole?: StoredConversation["userRole"];
 };
 
 export async function createConversation(
@@ -238,6 +301,8 @@ export async function createConversation(
   const mode = options.mode === "roleplay" ? "roleplay" : options.mode === "group" ? "group" : "chat";
   let cast: Persona[] | undefined;
   let director: Persona | undefined;
+  let world: StoredConversation["world"] | undefined;
+  let userRole: StoredConversation["userRole"] | undefined;
   if (mode === "roleplay" && (!options.persona || !isValidPersona(options.persona))) {
     throw new Error("persona is invalid");
   }
@@ -251,6 +316,14 @@ export async function createConversation(
     }
     director = options.director;
   }
+  if (options.world !== undefined && !isValidWorldSnapshot(options.world)) {
+    throw new Error("world is invalid");
+  }
+  if (options.userRole !== undefined && !isValidUserRole(options.userRole)) {
+    throw new Error("userRole is invalid");
+  }
+  world = options.world;
+  userRole = options.userRole;
   const store = await readStore(userId);
   const now = Date.now();
   const title =
@@ -268,6 +341,8 @@ export async function createConversation(
     persona: mode === "roleplay" ? options.persona : undefined,
     cast: mode === "group" ? cast! : undefined,
     director: mode === "group" ? director : undefined,
+    world,
+    userRole: mode === "group" ? userRole : undefined,
     messages: [],
   };
   store.conversations.push(conversation);

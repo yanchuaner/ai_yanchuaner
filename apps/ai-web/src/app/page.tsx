@@ -2,6 +2,7 @@
 
 import {
   Coins,
+  Globe,
   KeyRound,
   LogIn,
   Mic,
@@ -22,6 +23,8 @@ import { ConversationSidebar } from "@/components/sidebar";
 import { UserKnowledgeDrawer } from "@/components/user-knowledge";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
 import { createSpeakerPrefixStripper } from "@/lib/group-speech";
+import { PRESET_WORLDS } from "@/lib/preset-worlds";
+import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
   AppView,
   ChatMessage,
@@ -115,7 +118,14 @@ export default function HomePage() {
   const [createdKey, setCreatedKey] = useState("");
   const [keysError, setKeysError] = useState("");
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota" | "voice">("ledger");
+  const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota" | "voice" | "worlds">("ledger");
+  const [worlds, setWorlds] = useState<World[]>([]);
+  const [worldForm, setWorldForm] = useState({ title: "", description: "", timeline: "", outline: "" });
+  const [worldBusy, setWorldBusy] = useState(false);
+  const [worldResult, setWorldResult] = useState("");
+  const [worldError, setWorldError] = useState("");
+  const [activeWorldTitle, setActiveWorldTitle] = useState<string | null>(null);
+  const [activeUserRoleName, setActiveUserRoleName] = useState<string | null>(null);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettingsView | null>(null);
   const [voiceForm, setVoiceForm] = useState({
     asrBaseUrl: "",
@@ -249,12 +259,13 @@ export default function HomePage() {
     } catch {}
   }
 
-  async function openTools(tab: "ledger" | "keys" | "quota" | "voice") {
+  async function openTools(tab: "ledger" | "keys" | "quota" | "voice" | "worlds") {
     setToolsTab(tab);
     setToolsOpen(true);
     if (tab === "ledger") await loadLedger();
     if (tab === "keys") await loadKeys();
     if (tab === "voice") await loadVoiceSettings();
+    if (tab === "worlds") await loadWorlds();
   }
 
   async function loadVoiceSettings() {
@@ -353,6 +364,55 @@ export default function HomePage() {
     }
   }
 
+  async function loadWorlds() {
+    try {
+      const response = await fetch("/api/worlds", { cache: "no-store" });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      if (!response.ok) return;
+      const body = await response.json();
+      if (Array.isArray(body.worlds)) setWorlds(body.worlds);
+    } catch {}
+  }
+
+  async function saveWorld(input: WorldInput) {
+    setWorldBusy(true);
+    setWorldError("");
+    setWorldResult("");
+    try {
+      const response = await fetch("/api/worlds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (response.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "创建世界观失败。");
+      await loadWorlds();
+      setWorldForm({ title: "", description: "", timeline: "", outline: "" });
+      setWorldResult("世界观已保存。");
+    } catch (reason) {
+      setWorldError(reason instanceof Error ? reason.message : "创建世界观失败。");
+    } finally {
+      setWorldBusy(false);
+    }
+  }
+
+  async function removeWorld(worldId: string) {
+    if (!window.confirm("删除这个世界观？已开演的故事不受影响。")) return;
+    const response = await fetch(`/api/worlds/${worldId}`, { method: "DELETE" });
+    if (!response.ok) {
+      setWorldError("删除世界观失败。");
+      return;
+    }
+    await loadWorlds();
+  }
+
   async function transcribeVoice(file: File): Promise<string> {
     const form = new FormData();
     form.append("file", file);
@@ -434,6 +494,8 @@ export default function HomePage() {
     setMessages(detailResponse.messages);
     setActivePersona(detailResponse.persona ?? undefined);
     setActiveCast(Array.isArray(detailResponse.cast) ? detailResponse.cast : []);
+    setActiveWorldTitle(detailResponse.world?.snapshot.title ?? null);
+    setActiveUserRoleName(detailResponse.userRole?.name ?? null);
     setLastKnowledgeHits(null);
     void loadMemoryForConversation(id);
   }
@@ -547,6 +609,9 @@ export default function HomePage() {
     setConversations((current) => [body.conversation, ...current]);
     setMessages([]);
     setActivePersona(undefined);
+    setActiveCast([]);
+    setActiveWorldTitle(null);
+    setActiveUserRoleName(null);
     setError("");
     setSetupOpen(false);
     setView("chat");
@@ -595,17 +660,26 @@ export default function HomePage() {
     setConversations((current) => [body.conversation, ...current]);
     setMessages([]);
     setActivePersona(target);
+    setActiveCast([]);
+    setActiveWorldTitle(null);
+    setActiveUserRoleName(null);
     setError("");
     setSetupOpen(false);
     setDetail({ open: false });
     setView("chat");
   }
 
-  async function startGroupConversation(cast: Persona[], director?: Persona) {
+  async function startGroupConversation(
+    cast: Persona[],
+    director?: Persona,
+    world?: { worldId: string; snapshot: WorldSnapshot },
+    userRole?: { name: string; description: string },
+  ) {
+    const selectedWorld = world && world.snapshot ? world : undefined;
     const response = await fetch("/api/chat/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "group", cast, director }),
+      body: JSON.stringify({ mode: "group", cast, director, world: selectedWorld, userRole }),
       cache: "no-store",
     });
     const body = await response.json().catch(() => null);
@@ -615,6 +689,8 @@ export default function HomePage() {
     setMessages([]);
     setActivePersona(undefined);
     setActiveCast(cast);
+    setActiveWorldTitle(selectedWorld?.snapshot.title ?? null);
+    setActiveUserRoleName(userRole?.name ?? null);
     setError("");
     setSetupOpen(false);
     setDetail({ open: false });
@@ -845,6 +921,7 @@ export default function HomePage() {
         void loadFavorites();
         void loadUserKnowledge();
         void loadVoiceSettings();
+        void loadWorlds();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -1347,6 +1424,8 @@ export default function HomePage() {
                 onOpenTools={() => openTools("ledger")}
                 voiceAsrEnabled={Boolean(voiceSettings?.asr)}
                 voiceTtsEnabled={Boolean(voiceSettings?.tts)}
+                userRoleName={activeUserRoleName ?? undefined}
+                worldTitle={activeWorldTitle}
                 speakingId={speakingId}
                 onAsr={transcribeVoice}
                 onSpeak={speakVoice}
@@ -1356,8 +1435,8 @@ export default function HomePage() {
         </div>
       )}
 
-      <Drawer open={toolsOpen} title="额度与 Key" onClose={() => setToolsOpen(false)}>
-        <div className="tools-tabs" role="tablist" aria-label="额度与 Key">
+      <Drawer open={toolsOpen} title="工作台工具" onClose={() => setToolsOpen(false)}>
+        <div className="tools-tabs" role="tablist" aria-label="工作台工具">
           <button
             className={toolsTab === "ledger" ? "tools-tab active" : "tools-tab"}
             type="button"
@@ -1387,6 +1466,13 @@ export default function HomePage() {
             onClick={() => openTools("voice")}
           >
             <Mic size={15} aria-hidden="true" /> 语音
+          </button>
+          <button
+            className={toolsTab === "worlds" ? "tools-tab active" : "tools-tab"}
+            type="button"
+            onClick={() => openTools("worlds")}
+          >
+            <Globe size={15} aria-hidden="true" /> 世界观
           </button>
         </div>
 
@@ -1682,12 +1768,113 @@ export default function HomePage() {
             </p>
           </section>
         )}
+
+        {toolsTab === "worlds" && (
+          <section className="tool-section" aria-live="polite">
+            <h2>故事世界</h2>
+            <p className="tool-hint">世界观是群聊的剧本：选定世界后，成员会按这个世界的人设和时间线互动。</p>
+            <ul className="ledger-list">
+              {worlds.length === 0 && <p className="status-line">还没有世界观，先新建一个。</p>}
+              {worlds.map((world) => (
+                <li className="ledger-item" key={world.id}>
+                  <span className="ledger-amount">🌍</span>
+                  <span className="ledger-copy">
+                    <strong>{world.title}</strong>
+                    <small>{world.description.slice(0, 80)}{world.description.length > 80 ? "…" : ""}</small>
+                    <small>时间线：{world.timeline.slice(0, 50) || "未设置"}</small>
+                  </span>
+                  <button className="icon-action danger" type="button" onClick={() => void removeWorld(world.id)} aria-label="删除世界观">
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <h3 className="tool-sub">新建世界观</h3>
+            <div className="quota-form">
+              <label className="tool-full">
+                <span>标题</span>
+                <input
+                  type="text"
+                  value={worldForm.title}
+                  onChange={(event) => setWorldForm({ ...worldForm, title: event.target.value })}
+                  placeholder="如：燕川中学"
+                />
+              </label>
+              <label className="tool-full">
+                <span>世界观</span>
+                <textarea
+                  className="tool-textarea"
+                  rows={3}
+                  value={worldForm.description}
+                  onChange={(event) => setWorldForm({ ...worldForm, description: event.target.value })}
+                  placeholder="这个世界的基本规则、背景与氛围"
+                />
+              </label>
+              <label className="tool-full">
+                <span>时间线</span>
+                <input
+                  type="text"
+                  value={worldForm.timeline}
+                  onChange={(event) => setWorldForm({ ...worldForm, timeline: event.target.value })}
+                  placeholder="如：高三上学期，期中考试前两周"
+                />
+              </label>
+              <label className="tool-full">
+                <span>故事大纲</span>
+                <textarea
+                  className="tool-textarea"
+                  rows={4}
+                  value={worldForm.outline}
+                  onChange={(event) => setWorldForm({ ...worldForm, outline: event.target.value })}
+                  placeholder="主线走向、关键事件（可选）"
+                />
+              </label>
+            </div>
+            <div className="quota-form">
+              <span className="tool-hint">从预设开始：</span>
+              {PRESET_WORLDS.map((preset, index) => (
+                <button
+                  className="ghost-action"
+                  type="button"
+                  key={preset.title}
+                  disabled={worldBusy}
+                  onClick={() =>
+                    setWorldForm({
+                      title: preset.title,
+                      description: preset.description,
+                      timeline: preset.timeline ?? "",
+                      outline: preset.outline ?? "",
+                    })
+                  }
+                >
+                  {preset.title}
+                </button>
+              ))}
+            </div>
+            <button
+              className="primary-action"
+              type="button"
+              disabled={worldBusy || !worldForm.title.trim() || !worldForm.description.trim()}
+              onClick={() => void saveWorld(worldForm)}
+            >
+              {worldBusy ? "保存中…" : "保存世界观"}
+            </button>
+            {worldResult && <p className="quota-success">{worldResult}</p>}
+            {worldError && (
+              <p className="request-error" role="alert">
+                {worldError}
+              </p>
+            )}
+          </section>
+        )}
       </Drawer>
 
       <PersonaSetup
         open={setupOpen}
         presets={PRESET_PERSONAS}
         library={personas}
+        worlds={worlds}
         onClose={() => setSetupOpen(false)}
         onStartChat={startPlainConversation}
         onStartRoleplay={startRoleplayConversation}

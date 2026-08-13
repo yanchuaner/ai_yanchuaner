@@ -26,10 +26,19 @@ export function PersonaLibrary({
   const favoritePresets = presets.filter((persona) => favoriteIds.includes(persona.id));
   const favoriteLibrary = library.filter((persona) => favoriteIds.includes(persona.id));
 
+  const factionGroups = [...new Set(presets.map((persona) => persona.faction).filter(Boolean))].map(
+    (faction) => ({
+      title: `${faction}阵营`,
+      items: presets.filter((persona) => persona.faction === faction),
+    }),
+  );
+  const unfiled = presets.filter((persona) => !persona.faction);
+  if (unfiled.length > 0) factionGroups.push({ title: "预设角色", items: unfiled });
+
   const groups: { title: string; items: Persona[] }[] =
     filter === "all"
       ? [
-          { title: "预设角色", items: presets },
+          ...factionGroups,
           { title: "我的角色", items: library },
         ]
       : filter === "mine"

@@ -13,9 +13,13 @@ test("preset personas are valid and produce a complete system prompt", () => {
     assert.ok(isValidPersona(persona), `${persona.id} should be valid`);
   }
   const prompt = personaSystemPrompt(PRESET_PERSONAS[0]);
-  assert.match(prompt, /燕中学伴/);
+  assert.match(prompt, /闵先生/);
   assert.match(prompt, /【角色卡】/);
   assert.match(prompt, /用中文回复/);
+  assert.deepEqual(
+    new Set(PRESET_PERSONAS.map((persona) => persona.faction)),
+    new Set(["燕中", "科幻", "历史"]),
+  );
 });
 
 test("persona input accepts optional DIY sections and rejects invalid fields", () => {

@@ -6,16 +6,23 @@ import { PersonaForm } from "@/components/persona-form";
 import { KnowledgeDraftInput } from "@/components/knowledge-draft";
 import { type Persona } from "@/lib/personas";
 import type { KnowledgeDraft } from "@/lib/types";
+import type { World, WorldSnapshot } from "@/lib/worlds";
 import styles from "./persona-setup.module.css";
 
 type PersonaSetupProps = {
   open: boolean;
   presets: Persona[];
   library: Persona[];
+  worlds: World[];
   onClose: () => void;
   onStartChat: () => Promise<void>;
   onStartRoleplay: (persona: Persona, saveToLibrary: boolean, knowledge?: KnowledgeDraft) => Promise<void>;
-  onStartGroup: (cast: Persona[], director?: Persona) => Promise<void>;
+  onStartGroup: (
+    cast: Persona[],
+    director?: Persona,
+    world?: { worldId: string; snapshot: WorldSnapshot },
+    userRole?: { name: string; description: string },
+  ) => Promise<void>;
   onDeletePersona: (id: string) => Promise<void>;
 };
 
@@ -25,6 +32,7 @@ export function PersonaSetup({
   open,
   presets,
   library,
+  worlds,
   onClose,
   onStartChat,
   onStartRoleplay,
@@ -36,6 +44,8 @@ export function PersonaSetup({
   const [knowledgeDraft, setKnowledgeDraft] = useState<KnowledgeDraft>({ name: "", text: "" });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [directorId, setDirectorId] = useState("none");
+  const [worldId, setWorldId] = useState("none");
+  const [userRoleName, setUserRoleName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -46,6 +56,8 @@ export function PersonaSetup({
       setKnowledgeDraft({ name: "", text: "" });
       setSelectedIds([]);
       setDirectorId("none");
+      setWorldId("none");
+      setUserRoleName("");
       setError("");
       setBusy(false);
     }
@@ -107,7 +119,22 @@ export function PersonaSetup({
       return;
     }
     const director = directorId === "none" ? undefined : all.find((persona) => persona.id === directorId);
-    await run(() => onStartGroup(cast, director));
+    const selectedWorld = worlds.find((world) => world.id === worldId);
+    const world = selectedWorld
+      ? {
+          worldId: selectedWorld.id,
+          snapshot: {
+            title: selectedWorld.title,
+            description: selectedWorld.description,
+            timeline: selectedWorld.timeline,
+            outline: selectedWorld.outline,
+          },
+        }
+      : undefined;
+    const userRole = userRoleName.trim()
+      ? { name: userRoleName.trim(), description: "用户扮演的角色。" }
+      : undefined;
+    await run(() => onStartGroup(cast, director, world, userRole));
   }
 
   const heading =
@@ -240,6 +267,35 @@ export function PersonaSetup({
                     </option>
                   ))}
               </select>
+            </section>
+            <section>
+              <h3>故事世界（可选）</h3>
+              <select
+                className={styles.directorSelect}
+                value={worldId}
+                onChange={(event) => setWorldId(event.target.value)}
+                disabled={busy}
+              >
+                <option value="none">无世界观（普通群聊）</option>
+                {worlds.map((world) => (
+                  <option value={world.id} key={world.id}>
+                    {world.title}
+                  </option>
+                ))}
+              </select>
+              <p className={styles.muted}>世界观可在工具抽屉中新建，开演后修改不影响已开始的群聊。</p>
+            </section>
+            <section>
+              <h3>你扮演的角色（可选）</h3>
+              <input
+                className={styles.directorSelect}
+                type="text"
+                value={userRoleName}
+                onChange={(event) => setUserRoleName(event.target.value)}
+                placeholder="如：转学生"
+                disabled={busy}
+              />
+              <p className={styles.muted}>填写后，你的发言会以这个身份出现在群聊里。</p>
               <div className={styles.groupActions}>
                 <button className={styles.backButton} type="button" onClick={() => setStep("mode")} disabled={busy}>
                   返回
