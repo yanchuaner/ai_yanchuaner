@@ -341,7 +341,12 @@ export function ChatStage({
                       className={styles.speakButton}
                       type="button"
                       disabled={speakingId === message.id}
-                      onClick={() => void onSpeak(message.id, message.content)}
+                      onClick={() => {
+                        setVoiceError("");
+                        void onSpeak(message.id, message.content).catch((reason) => {
+                          setVoiceError(reason instanceof Error ? reason.message : "语音朗读失败。");
+                        });
+                      }}
                     >
                       <Volume2 size={13} aria-hidden="true" />
                       {speakingId === message.id ? "朗读中…" : "朗读"}

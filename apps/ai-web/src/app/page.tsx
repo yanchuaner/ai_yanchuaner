@@ -132,6 +132,7 @@ export default function HomePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   function handleSessionExpired() {
     abortRef.current?.abort();
@@ -367,6 +368,11 @@ export default function HomePage() {
   async function speakVoice(messageId: string, text: string) {
     setSpeakingId(messageId);
     try {
+      // 在用户手势内创建并唤醒 AudioContext，避免浏览器自动播放策略拦截；
+      // 后续用 decodeAudioData 播放 MP3，失败会明确报错而不是静默无音。
+      const audioContext = audioContextRef.current ?? new AudioContext();
+      audioContextRef.current = audioContext;
+      if (audioContext.state === "suspended") await audioContext.resume();
       const response = await fetch("/api/me/voice/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -380,21 +386,16 @@ export default function HomePage() {
         const body = await response.json().catch(() => null);
         throw new Error(body?.error || "语音朗读失败。");
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setSpeakingId(null);
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setSpeakingId(null);
-      };
-      await audio.play();
+      const arrayBuffer = await response.arrayBuffer();
+      const decoded = await audioContext.decodeAudioData(arrayBuffer);
+      const source = audioContext.createBufferSource();
+      source.buffer = decoded;
+      source.connect(audioContext.destination);
+      source.onended = () => setSpeakingId(null);
+      source.start();
     } catch (reason) {
       setSpeakingId(null);
-      setError(reason instanceof Error ? reason.message : "语音朗读失败。");
+      throw reason instanceof Error ? reason : new Error("语音朗读失败。");
     }
   }
 
