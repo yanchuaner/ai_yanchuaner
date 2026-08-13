@@ -14,6 +14,7 @@ type PersonaSetupProps = {
   presets: Persona[];
   library: Persona[];
   worlds: World[];
+  initialWorldId?: string | null;
   onClose: () => void;
   onStartChat: () => Promise<void>;
   onStartRoleplay: (persona: Persona, saveToLibrary: boolean, knowledge?: KnowledgeDraft) => Promise<void>;
@@ -33,6 +34,7 @@ export function PersonaSetup({
   presets,
   library,
   worlds,
+  initialWorldId,
   onClose,
   onStartChat,
   onStartRoleplay,
@@ -56,7 +58,7 @@ export function PersonaSetup({
       setKnowledgeDraft({ name: "", text: "" });
       setSelectedIds([]);
       setDirectorId("none");
-      setWorldId("none");
+      setWorldId(initialWorldId ?? "none");
       setUserRoleName("");
       setError("");
       setBusy(false);
