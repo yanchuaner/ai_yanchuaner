@@ -488,3 +488,92 @@ test("group scheduler never picks the director even when it is also in the cast"
     assert.deepEqual(body.speakers, [{ id: traveler.id, name: traveler.name }]);
   });
 });
+
+test("group opening schedules a greeting without a user message", async () => {
+  await withDataDir(async () => {
+    const first = {
+      id: "preset-min-teacher",
+      name: "闵先生",
+      description: "班主任",
+      firstMessage: "进来坐。",
+    };
+    const second = {
+      id: "preset-madan",
+      name: "马蛋",
+      description: "年级第一",
+      firstMessage: "说吧。",
+    };
+    const conversation = await createConversation(7, { mode: "group", cast: [first, second] });
+    const forwarded: { stream?: boolean; messages: { role: string; content: string }[] }[] = [];
+    const fetcher: typeof fetch = async (_input, init) => {
+      const url = String(_input);
+      if (url.endsWith("/v1/embeddings")) {
+        return Response.json({
+          object: "list",
+          model: "BAAI/bge-m3",
+          data: [{ object: "embedding", index: 0, embedding: [1, 0, 0] }],
+          usage: { prompt_tokens: 1, total_tokens: 1 },
+        });
+      }
+      const parsed = JSON.parse(String(init?.body)) as {
+        stream?: boolean;
+        messages: { role: string; content: string }[];
+      };
+      forwarded.push(parsed);
+      if (parsed.stream === false) {
+        return Response.json({
+          choices: [{ message: { content: '{"speakers":["闵先生"]}' } }],
+        });
+      }
+      return new Response(
+        'data: {"choices":[{"delta":{"content":"欢迎，新同学。"}}]}\n\ndata: [DONE]\n\n',
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    };
+
+    const schedule = await handleChatCompletion(
+      authenticatedRequest(
+        "/api/chat/completions",
+        {
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: "开始群聊" }],
+          knowledge: false,
+          conversationId: conversation.id,
+          groupSchedule: true,
+          opening: true,
+        },
+        "https://ai.example.test",
+        ["deepseek-chat", "BAAI/bge-m3"],
+      ),
+      config,
+      fetcher,
+    );
+    assert.equal(schedule.status, 200);
+    const scheduleBody = (await schedule.json()) as { speakers: { id: string; name: string }[] };
+    assert.deepEqual(scheduleBody.speakers, [{ id: first.id, name: first.name }]);
+    assert.match(forwarded[0].messages.at(-1)?.content ?? "", /群聊刚开始/);
+
+    const speaker = await handleChatCompletion(
+      authenticatedRequest(
+        "/api/chat/completions",
+        {
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: "开始群聊" }],
+          knowledge: false,
+          conversationId: conversation.id,
+          speakerId: first.id,
+          opening: true,
+        },
+        "https://ai.example.test",
+        ["deepseek-chat", "BAAI/bge-m3"],
+      ),
+      config,
+      fetcher,
+    );
+    assert.equal(speaker.status, 200);
+    assert.equal((await speaker.text()).includes("欢迎，新同学。"), true);
+    const speakerRequest = forwarded[1];
+    assert.match(speakerRequest.messages[0].content, /这是群聊的开场/);
+    assert.equal(speakerRequest.messages.length, 1, "开场请求不应携带假用户消息");
+  });
+});

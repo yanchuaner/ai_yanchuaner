@@ -822,6 +822,121 @@ export default function HomePage() {
     setSetupOpen(false);
     setDetail({ open: false });
     setView("chat");
+    void runGroupOpening(body.conversation.id, cast.map((persona) => persona.name));
+  }
+
+  async function runGroupOpening(targetConversationId: string, castNames: string[]) {
+    const openingMessages = [{ role: "user" as const, content: "开始群聊" }];
+    try {
+      const scheduleResponse = await fetch("/api/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: openingMessages,
+          knowledge: false,
+          conversationId: targetConversationId,
+          groupSchedule: true,
+          opening: true,
+        }),
+      });
+      if (scheduleResponse.status === 401) {
+        handleSessionExpired();
+        return;
+      }
+      const scheduleBody = await scheduleResponse.json().catch(() => null);
+      if (!scheduleResponse.ok || !Array.isArray(scheduleBody?.speakers) || scheduleBody.speakers.length === 0) {
+        return;
+      }
+      const speakers = scheduleBody.speakers as { id: string; name: string }[];
+      const turnKey = crypto.randomUUID();
+      const messageIdBySpeaker = new Map(
+        speakers.map((speaker) => [speaker.id, `group-${speaker.id}-${turnKey}`]),
+      );
+      setMessages((current) => [
+        ...current,
+        ...speakers.map((speaker) => ({
+          id: messageIdBySpeaker.get(speaker.id) as string,
+          role: "assistant" as const,
+          content: "",
+          personaId: speaker.id,
+        })),
+      ]);
+      await Promise.allSettled(
+        speakers.map(async (speaker) => {
+          const response = await fetch("/api/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model,
+              messages: openingMessages,
+              knowledge: false,
+              conversationId: targetConversationId,
+              speakerId: speaker.id,
+              opening: true,
+            }),
+          });
+          if (response.status === 401) {
+            handleSessionExpired();
+            return;
+          }
+          if (!response.ok || !response.body) return;
+          const messageId = messageIdBySpeaker.get(speaker.id) as string;
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          const prefixStripper = createSpeakerPrefixStripper(speaker.name);
+          let buffer = "";
+          let content = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            buffer += decoder.decode(value, { stream: !done });
+            const events = buffer.split("\n\n");
+            buffer = events.pop() ?? "";
+            for (const block of events) {
+              for (const line of block.split("\n")) {
+                if (!line.startsWith("data:")) continue;
+                const data = line.slice(5).trim();
+                if (!data || data === "[DONE]") continue;
+                const chunk = JSON.parse(data);
+                if (typeof chunk?.error?.message === "string") throw new Error(chunk.error.message);
+                const delta = chunk?.choices?.[0]?.delta?.content;
+                if (typeof delta === "string" && delta.length > 0) {
+                  const cleaned = prefixStripper.push(delta);
+                  if (cleaned) {
+                    content += cleaned;
+                    setMessages((current) =>
+                      current.map((message) =>
+                        message.id === messageId ? { ...message, content: message.content + cleaned } : message,
+                      ),
+                    );
+                  }
+                }
+              }
+            }
+            if (done) break;
+          }
+          if (!content) return;
+          if (containsOtherSpeakerSpeech(content, speaker.name, castNames)) {
+            setMessages((current) => current.filter((message) => message.id !== messageId));
+            return;
+          }
+          await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: messageId,
+              role: "assistant",
+              content,
+              personaId: speaker.id,
+            }),
+          }).catch(() => {});
+        }),
+      );
+      await loadBalance();
+      await loadConversations();
+    } catch {
+      // 开场失败不阻断，用户直接说话即可。
+    }
   }
 
   async function switchToPlain() {
