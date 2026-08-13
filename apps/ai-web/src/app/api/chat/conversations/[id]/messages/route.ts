@@ -18,6 +18,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     role: candidate.role as StoredMessage["role"],
     content: typeof candidate.content === "string" ? candidate.content : "",
     personaId: typeof candidate.personaId === "string" ? candidate.personaId : undefined,
+    imageUrl: typeof candidate.imageUrl === "string" ? candidate.imageUrl : undefined,
     requestId: typeof candidate.requestId === "string" ? candidate.requestId : undefined,
     usage:
       candidate.usage && typeof candidate.usage === "object"

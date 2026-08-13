@@ -4,6 +4,7 @@ import {
   Bot,
   Check,
   Download,
+  ImagePlus,
   LogOut,
   Mic,
   Pencil,
@@ -12,6 +13,7 @@ import {
   Send,
   Square,
   Volume2,
+  Wand2,
   Trash2,
   User,
   X,
@@ -60,6 +62,11 @@ type ChatStageProps = {
   speakingId: string | null;
   onAsr: (file: File) => Promise<string>;
   onSpeak: (messageId: string, text: string) => Promise<void>;
+  pendingImage?: string | null;
+  imageBusy?: boolean;
+  onPickImage: () => void;
+  onClearImage: () => void;
+  onGenerateImage: (prompt: string) => Promise<void>;
 };
 
 export function ChatStage({
@@ -100,6 +107,11 @@ export function ChatStage({
   speakingId,
   onAsr,
   onSpeak,
+  pendingImage,
+  imageBusy,
+  onPickImage,
+  onClearImage,
+  onGenerateImage,
 }: ChatStageProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(conversationTitle);
@@ -344,6 +356,14 @@ export function ChatStage({
                     ) : (
                       <span className={styles.thinking}>正在生成…</span>
                     )}
+                    {message.imageUrl && (
+                      <img
+                        className={styles.messageImage}
+                        src={message.imageUrl}
+                        alt="AI 生成的图片"
+                        loading="lazy"
+                      />
+                    )}
                     {message.role === "assistant" && (message.requestId || message.usage) && (
                       <small className={styles.meta}>
                         {message.requestId ? `request ${message.requestId}` : ""}
@@ -385,6 +405,14 @@ export function ChatStage({
               </p>
             )}
             <form className={styles.composer} onSubmit={handleSubmit}>
+              {pendingImage && (
+                <div className={styles.imagePreview}>
+                  <img src={pendingImage} alt="待发送图片" />
+                  <button type="button" onClick={onClearImage} aria-label="移除图片">
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
               <textarea
                 aria-label="消息"
                 placeholder={activePersona ? `对「${activePersona.name}」说点什么…` : "输入消息"}
@@ -414,6 +442,26 @@ export function ChatStage({
                     aria-label={recording ? "停止录音" : "语音输入"}
                   >
                     {recording ? <Square size={15} fill="currentColor" aria-hidden="true" /> : <Mic size={17} aria-hidden="true" />}
+                  </button>
+                  <button
+                    className={styles.micButton}
+                    type="button"
+                    disabled={pending || !prompt.trim()}
+                    onClick={() => void onGenerateImage(prompt)}
+                    title="用当前输入生成图片"
+                    aria-label="生成图片"
+                  >
+                    <Wand2 size={16} aria-hidden="true" />
+                  </button>
+                  <button
+                    className={styles.micButton}
+                    type="button"
+                    disabled={pending}
+                    onClick={onPickImage}
+                    title="上传图片让角色看"
+                    aria-label="上传图片"
+                  >
+                    <ImagePlus size={17} aria-hidden="true" />
                   </button>
                   <button className={styles.send} type="submit" disabled={!prompt.trim() || !model} title="发送" aria-label="发送">
                     <Send size={17} aria-hidden="true" />
