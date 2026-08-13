@@ -1,8 +1,9 @@
 "use client";
 
-import { Bot, Coins, Download, KeyRound, LogIn, LogOut, Plus, ReceiptText, Send, ShieldCheck, SlidersHorizontal, Sparkles, Square, Trash2, User } from "lucide-react";
+import { Bot, Coins, Download, KeyRound, LogIn, LogOut, PanelLeft, Plus, ReceiptText, Send, ShieldCheck, SlidersHorizontal, Sparkles, Square, Trash2, User } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Drawer } from "@/components/drawer";
+import { ConversationSidebar } from "@/components/sidebar";
 
 type SessionState =
   | { status: "loading" }
@@ -80,6 +81,7 @@ export default function HomePage() {
 	const [keysError, setKeysError] = useState("");
 	const [toolsOpen, setToolsOpen] = useState(false);
 	const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota">("ledger");
+	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 
 	async function loadBalance() {
@@ -228,23 +230,24 @@ export default function HomePage() {
 		}
 	}
 
-	async function deleteCurrentConversation() {
-		if (!conversationId || !window.confirm("删除当前会话？此操作不可恢复。")) return;
-		await fetch(`/api/chat/conversations/${conversationId}`, { method: "DELETE" });
-		setConversationId(null);
-		setMessages([]);
+	async function deleteConversationById(id: string) {
+		if (!window.confirm("删除该会话？此操作不可恢复。")) return;
+		await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+		if (id === conversationId) {
+			setConversationId(null);
+			setMessages([]);
+		}
 		await loadConversations();
 	}
 
-	async function exportCurrentConversation() {
-		if (!conversationId) return;
-		const response = await fetch(`/api/chat/conversations/${conversationId}/export`);
+	async function exportConversationById(id: string) {
+		const response = await fetch(`/api/chat/conversations/${id}/export`);
 		if (!response.ok) return;
 		const blob = await response.blob();
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement("a");
 		link.href = url;
-		link.download = `yanchuaner-ai-conversation-${conversationId}.json`;
+		link.download = `yanchuaner-ai-conversation-${id}.json`;
 		link.click();
 		URL.revokeObjectURL(url);
 	}
@@ -426,25 +429,41 @@ export default function HomePage() {
       )}
 
       {session.status === "authenticated" && (
-        <section className="chat-workspace">
-			<div className="chat-toolbar">
-				<div className="identity">
-					<span className="avatar"><User size={17} aria-hidden="true" /></span>
-					<span><strong>{session.identity.name}</strong><small>#{session.subject.userId}</small></span>
-				</div>
-				<div className="toolbar-filters">
+        <div className="workspace-grid">
+          <ConversationSidebar
+            conversations={conversations}
+            activeId={conversationId}
+            open={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            onSelect={(id) => {
+              void openConversation(id);
+              setSidebarOpen(false);
+            }}
+            onNew={() => {
+              void newConversation();
+              setSidebarOpen(false);
+            }}
+            onDelete={(id) => {
+              void deleteConversationById(id);
+            }}
+            onExport={(id) => {
+              void exportConversationById(id);
+            }}
+          />
+          <section className="chat-workspace">
+          <div className="chat-toolbar">
+            <div className="identity">
+              <button className="sidebar-toggle" type="button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="会话列表">
+                <PanelLeft size={18} aria-hidden="true" />
+              </button>
+              <span className="avatar"><User size={17} aria-hidden="true" /></span>
+              <span><strong>{session.identity.name}</strong><small>#{session.subject.userId}</small></span>
+            </div>
+            <div className="toolbar-filters">
 					<span className="balance" title="公益额度（单位）">
 						<small>公益额度</small>
 						<strong>{balanceUnits === null ? "—" : balanceUnits}</strong>
 					</span>
-					<label className="conversation-picker">
-						<span>会话</span>
-						<select value={conversationId ?? ""} onChange={(event) => openConversation(event.target.value)} disabled={pending}>
-							{conversations.map((item) => (
-								<option value={item.id} key={item.id}>{item.title}</option>
-							))}
-						</select>
-					</label>
 					<label className="model-picker">
 						<span>模型</span>
 						<select value={model} onChange={(event) => setModel(event.target.value)} disabled={pending}>
@@ -456,10 +475,10 @@ export default function HomePage() {
 					<button className="icon-action" type="button" onClick={() => openTools("ledger")} title="额度与 Key" aria-label="额度与 Key">
 						<SlidersHorizontal size={17} aria-hidden="true" />
 					</button>
-					<button className="icon-action" type="button" onClick={exportCurrentConversation} title="导出会话" aria-label="导出会话">
+					<button className="icon-action" type="button" onClick={() => conversationId && exportConversationById(conversationId)} title="导出会话" aria-label="导出会话">
 						<Download size={17} aria-hidden="true" />
 					</button>
-					<button className="icon-action" type="button" onClick={deleteCurrentConversation} title="删除会话" aria-label="删除会话">
+					<button className="icon-action" type="button" onClick={() => conversationId && deleteConversationById(conversationId)} title="删除会话" aria-label="删除会话">
 						<Trash2 size={17} aria-hidden="true" />
 					</button>
 					<button className="icon-action" type="button" onClick={newConversation} title="新对话" aria-label="新对话">
@@ -664,7 +683,8 @@ export default function HomePage() {
               )}
             </form>
           </div>
-        </section>
+          </section>
+        </div>
       )}
     </main>
   );
