@@ -149,6 +149,12 @@
   padding-left: 1.6em;
 }
 
+.body input[type="checkbox"] {
+  accent-color: var(--brand);
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
 .body hr {
   border: 0;
   background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
