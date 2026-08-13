@@ -11,14 +11,14 @@ body {
   margin: 0;
   background-color: var(--bg);
   background-image:
-    radial-gradient(1100px 620px at 88% -8%, rgba(103, 212, 232, 0.13), transparent 62%),
-    radial-gradient(960px 560px at -8% 24%, rgba(245, 207, 125, 0.08), transparent 58%),
-    radial-gradient(900px 700px at 46% 118%, rgba(123, 45, 139, 0.13), transparent 62%),
-    radial-gradient(circle at 16% 32%, rgba(255, 255, 255, 0.16) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 72% 18%, rgba(124, 227, 242, 0.2) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 38% 76%, rgba(245, 207, 125, 0.14) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 88% 64%, rgba(255, 255, 255, 0.1) 0 1px, transparent 1.5px);
-  background-size: auto, auto, auto, 210px 210px, 260px 260px, 230px 230px, 190px 190px;
+    radial-gradient(1100px 620px at 88% -8%, rgba(232, 180, 106, 0.08), transparent 62%),
+    radial-gradient(960px 560px at -8% 24%, rgba(217, 142, 115, 0.05), transparent 58%),
+    radial-gradient(900px 700px at 46% 118%, rgba(120, 100, 70, 0.1), transparent 62%),
+    radial-gradient(circle at 16% 32%, rgba(255, 244, 224, 0.1) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 18%, rgba(232, 180, 106, 0.14) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 38% 76%, rgba(217, 142, 115, 0.1) 0 1px, transparent 1.5px),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/></svg>");
+  background-size: auto, auto, auto, 210px 210px, 260px 260px, 230px 230px, 140px 140px;
   color: var(--text);
   font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -35,6 +35,23 @@ input {
 button,
 select {
   cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+a,
+input,
+textarea {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
 button:disabled {
@@ -42,12 +59,22 @@ button:disabled {
 }
 
 ::selection {
-  background: rgba(124, 227, 242, 0.28);
+  background: rgba(232, 180, 106, 0.28);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-glow);
+  outline-offset: 2px;
+}
+
+input,
+textarea {
+  caret-color: var(--caret);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(124, 227, 242, 0.24) transparent;
+  scrollbar-color: rgba(232, 180, 106, 0.24) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -56,7 +83,7 @@ button:disabled {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(124, 227, 242, 0.24);
+  background: rgba(232, 180, 106, 0.24);
   border-radius: 8px;
 }
 

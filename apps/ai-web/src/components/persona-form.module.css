@@ -83,7 +83,7 @@
 
 .coverActive {
   border-color: var(--brand);
-  box-shadow: 0 0 12px rgba(103, 212, 232, 0.28);
+  box-shadow: 0 0 12px rgba(232, 180, 106, 0.28);
 }
 
 .error {
@@ -116,8 +116,8 @@
 }
 
 .submit {
-  background: linear-gradient(135deg, #7ce3f2, #5bb8e8);
-  border: 1px solid rgba(124, 227, 242, 0.7);
+  background: linear-gradient(135deg, #e8b46a, #d98e73);
+  border: 1px solid rgba(232, 180, 106, 0.7);
   color: var(--brand-ink);
   font-weight: 700;
 }

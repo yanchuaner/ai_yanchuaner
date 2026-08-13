@@ -1,38 +1,48 @@
 :root {
   color-scheme: dark;
 
-  /* 基础语义令牌：名称与 Lab 对齐，颜色保持燕中 AI 的星空暗色方向。 */
-  --bg: #060a12;
-  --bg-deep: #04070d;
-  --surface: #101824;
-  --surface-muted: #0c131d;
-  --surface-strong: #182536;
-  --text: #f5f8fc;
-  --text-muted: #9fb0c2;
-  --line: rgba(91, 118, 146, 0.26);
-  --line-strong: rgba(103, 212, 232, 0.38);
-  --brand: #7ce3f2;
-  --brand-soft: rgba(103, 212, 232, 0.16);
-  --accent: #f5cf7d;
-  --danger: #ff8f8f;
-  --focus: #f5cf7d;
-  --brand-ink: #061016;
+  /* 基础语义令牌：低饱和暖灰底色 + 琥珀主色，弱化“科技冷色”的距离感。 */
+  --bg: #171512;
+  --bg-deep: #13110f;
+  --surface: #221f1b;
+  --surface-muted: #1b1916;
+  --surface-strong: #2c2823;
+  --text: #f4efe8;
+  --text-muted: #b3a89a;
+  --line: rgba(185, 165, 140, 0.16);
+  --line-strong: rgba(232, 180, 106, 0.4);
+  --brand: #e8b46a;
+  --brand-soft: rgba(232, 180, 106, 0.15);
+  --brand-glow: rgba(232, 180, 106, 0.3);
+  --accent: #d98e73;
+  --accent-glow: rgba(217, 142, 115, 0.24);
+  --danger: #e58b7a;
+  --focus: #e8b46a;
+  --brand-ink: #201507;
 
-  /* 玻璃面板与阴影 */
-  --glass-bg: rgba(16, 24, 36, 0.72);
-  --glass-strong: rgba(18, 28, 42, 0.86);
+  /* 面板与阴影：少描边、少投影，用背景色差与负间距区分层级 */
+  --glass-bg: rgba(34, 31, 27, 0.62);
+  --glass-strong: rgba(27, 25, 22, 0.84);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.045);
   --glass-blur: 16px;
   --radius-lg: 16px;
   --radius-md: 10px;
   --radius-sm: 7px;
-  --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.38);
-  --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.3);
+  --shadow-panel: 0 18px 44px rgba(0, 0, 0, 0.36);
+  --shadow-float: 0 12px 28px rgba(0, 0, 0, 0.3);
+
+  /* 动效：短促、克制，尊重 prefers-reduced-motion */
+  --dur-fast: 140ms;
+  --dur-base: 240ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --caret: #e8b46a;
 
   /* 角色封面渐变：与 personas.ts 中的 COVER_OPTIONS 一一对应 */
-  --cover-aurora: linear-gradient(135deg, #6fd9ec 0%, #6b8cff 55%, #b78bff 100%);
-  --cover-nebula: linear-gradient(135deg, #2b3f6b 0%, #7b2d8b 58%, #f0c66b 100%);
-  --cover-ocean: linear-gradient(135deg, #0e4d6e 0%, #2ba4a0 100%);
-  --cover-forest: linear-gradient(135deg, #123c2e 0%, #4f9d69 100%);
-  --cover-sunset: linear-gradient(135deg, #7a2d3f 0%, #e08b57 60%, #f0c66b 100%);
-  --cover-galaxy: linear-gradient(135deg, #111a35 0%, #3b2a6b 55%, #7ce3f2 100%);
+  --cover-aurora: linear-gradient(135deg, #e8b46a 0%, #d98e73 55%, #a98b7a 100%);
+  --cover-nebula: linear-gradient(135deg, #4a3650 0%, #8a5a4a 58%, #e8b46a 100%);
+  --cover-ocean: linear-gradient(135deg, #3e5d52 0%, #7a9b6d 100%);
+  --cover-forest: linear-gradient(135deg, #2e3d28 0%, #6f8f5a 100%);
+  --cover-sunset: linear-gradient(135deg, #6e3a32 0%, #d98e73 60%, #e8b46a 100%);
+  --cover-galaxy: linear-gradient(135deg, #2a2130 0%, #4d3558 55%, #e8b46a 100%);
 }
