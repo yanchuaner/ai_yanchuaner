@@ -49,14 +49,17 @@
 }
 
 .body blockquote {
-  border-left: 3px solid var(--line-strong);
+  background: var(--brand-soft);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-md);
   color: var(--text-muted);
   margin: 0 0 0.7em;
-  padding: 0.1em 0 0.1em 0.9em;
+  padding: 0.6em 0.9em;
 }
 
 .body code {
-  background: rgba(124, 227, 242, 0.1);
+  background: rgba(232, 180, 106, 0.1);
   border: 1px solid var(--line);
   border-radius: 5px;
   color: var(--brand);
@@ -65,20 +68,46 @@
   padding: 0.1em 0.35em;
 }
 
-.body pre {
-  background: var(--bg-deep);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  margin: 0 0 0.8em;
-  overflow-x: auto;
-  padding: 12px 14px;
+.codeBlock {
+  position: relative;
 }
 
-.body pre code {
+.codeBlock pre {
+  background: rgba(4, 7, 13, 0.82);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-highlight);
+  margin: 0 0 0.8em;
+  overflow-x: auto;
+  padding: 32px 14px 12px;
+}
+
+.codeBlock pre code {
   background: transparent;
   border: 0;
   color: var(--text);
   padding: 0;
+}
+
+.copyButton {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 11px;
+  min-height: 24px;
+  padding: 0 9px;
+  position: absolute;
+  right: 10px;
+  top: 9px;
+  z-index: 1;
+}
+
+.copyButton:hover {
+  border-color: var(--line-strong);
+  color: var(--brand);
 }
 
 .body a {
@@ -89,6 +118,8 @@
 
 .body table {
   border-collapse: collapse;
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-highlight);
   display: block;
   margin: 0 0 0.8em;
   max-width: 100%;
@@ -104,12 +135,23 @@
 }
 
 .body th {
-  background: var(--surface-muted);
+  background: var(--brand-soft);
   color: var(--text);
+  font-weight: 650;
+}
+
+.body li::marker {
+  color: var(--brand);
+}
+
+.body ul,
+.body ol {
+  padding-left: 1.6em;
 }
 
 .body hr {
   border: 0;
-  border-top: 1px solid var(--line);
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+  height: 1px;
   margin: 1em 0;
 }

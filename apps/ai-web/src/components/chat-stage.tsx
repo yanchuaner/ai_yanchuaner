@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Bot,
   Check,
   Download,
   ImagePlus,
@@ -69,6 +68,24 @@ type ChatStageProps = {
   onGenerateImage: (prompt: string) => Promise<void>;
 };
 
+function HumanistMark({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M12 4a8 8 0 1 0 8 8" />
+      <path d="M8 13.5c1.2-1.5 2.4-1.5 3.6 0s2.4 1.5 3.6 0" />
+    </svg>
+  );
+}
+
 export function ChatStage({
   conversationTitle,
   onChangeTitle,
@@ -135,6 +152,11 @@ export function ChatStage({
     activePersona?.firstMessage?.trim()
       ? [{ id: "persona-greeting", role: "assistant", content: activePersona.firstMessage }, ...messages]
       : messages;
+  const hour = new Date().getHours();
+  const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  const period = hour < 5 ? "深夜" : hour < 12 ? "上午" : hour < 18 ? "下午" : "晚上";
+  const greetingText = `${weekdays[new Date().getDay()]}的${period}，准备好开始了吗？`;
+  const promptSuggestions = ["帮我列一份本周学习计划", "写一段一分钟的自我介绍", "用大白话解释什么是熵"];
 
   const totalUsage = messages.reduce(
     (sum, message) =>
@@ -291,7 +313,7 @@ export function ChatStage({
               onClick={() => onQuickSwitch(undefined)}
             >
               <span className={styles.quickAvatar}>
-                <Bot size={15} aria-hidden="true" />
+                <HumanistMark size={15} />
               </span>
               <span>普通助手</span>
             </button>
@@ -326,11 +348,24 @@ export function ChatStage({
                   </>
                 ) : (
                   <>
-                    <span>
-                      <Bot size={26} aria-hidden="true" />
+                    <span className={styles.emptyMark}>
+                      <HumanistMark size={30} />
                     </span>
-                    <h1>新对话</h1>
-                    <p>{activePersona ? `与「${activePersona.name}」开始对话` : `当前模型 ${model || "未选择"}`}</p>
+                    <h1>{greetingText}</h1>
+                    <p>想从哪开始？挑一个问题，或直接输入你的想法。</p>
+                    <div className={styles.promptCards}>
+                      {promptSuggestions.map((suggestion, index) => (
+                        <button
+                          key={suggestion}
+                          className={`${styles.promptCard} ${index % 2 === 1 ? styles.promptCardAlt : ""}`}
+                          type="button"
+                          onClick={() => onPromptChange(suggestion)}
+                        >
+                          <span className={styles.promptMark}>「</span>
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
                   </>
                 )}
               </div>
@@ -343,7 +378,7 @@ export function ChatStage({
               return (
                 <article className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant}`} key={message.id}>
                   <span className={styles.messageIcon}>
-                    {message.role === "user" ? <User size={16} aria-hidden="true" /> : speaker?.avatar || <Bot size={16} aria-hidden="true" />}
+                    {message.role === "user" ? <User size={16} aria-hidden="true" /> : speaker?.avatar || <HumanistMark size={16} />}
                   </span>
                   <div className={styles.messageBody}>
                     {message.role === "user" && userRoleName ? (
