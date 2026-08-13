@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Bot, Coins, FileText, Plus, Sparkles, Star, Users } from "lucide-react";
+import { ArrowRight, BookOpen, Bot, Coins, FileText, Plus, Sparkles, Star, Users } from "lucide-react";
 import { type Persona } from "@/lib/personas";
 import type { ConversationSummary, KnowledgeDocumentSummary } from "@/lib/types";
 import styles from "./home-view.module.css";
@@ -20,6 +20,7 @@ type HomeViewProps = {
   onNewChat: () => void;
   onOpenLibrary: () => void;
   onOpenTools: () => void;
+  onOpenGuide: () => void;
   onOpenPersona: (persona: Persona) => void;
 };
 
@@ -38,6 +39,7 @@ export function HomeView({
   onNewChat,
   onOpenLibrary,
   onOpenTools,
+  onOpenGuide,
   onOpenPersona,
 }: HomeViewProps) {
   const hour = new Date().getHours();
@@ -60,7 +62,25 @@ export function HomeView({
           <button className={styles.secondary} type="button" onClick={onOpenLibrary}>
             <Users size={16} aria-hidden="true" /> 角色库
           </button>
+          <button className={styles.secondary} type="button" onClick={onOpenGuide}>
+            <BookOpen size={16} aria-hidden="true" /> 使用指南
+          </button>
         </div>
+      </section>
+
+      <section className={styles.quickStart}>
+        <button className={styles.quickStep} type="button" onClick={onNewChat}>
+          <strong>1 · 开始对话</strong>
+          <small>普通助手直接开聊，或选多人群聊拉角色同台。</small>
+        </button>
+        <button className={styles.quickStep} type="button" onClick={onOpenLibrary}>
+          <strong>2 · 认识角色</strong>
+          <small>从阵营预设里挑一个，或创建自己的角色卡。</small>
+        </button>
+        <button className={styles.quickStep} type="button" onClick={onOpenGuide}>
+          <strong>3 · 解锁玩法</strong>
+          <small>语音、图片、画图、故事世界，看使用指南即可。</small>
+        </button>
       </section>
 
       <section className={styles.cards}>

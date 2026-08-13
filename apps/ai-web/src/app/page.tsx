@@ -16,6 +16,7 @@ import {
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ChatStage } from "@/components/chat-stage";
 import { Drawer } from "@/components/drawer";
+import { GuideDrawer } from "@/components/guide-drawer";
 import { HomeView } from "@/components/home-view";
 import { PersonaDetail } from "@/components/persona-detail";
 import { PersonaLibrary } from "@/components/persona-library";
@@ -151,6 +152,7 @@ export default function HomePage() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -1661,6 +1663,7 @@ export default function HomePage() {
                 onNewChat={openNewConversationSetup}
                 onOpenLibrary={() => navigate("personas")}
                 onOpenTools={() => openTools("ledger")}
+                onOpenGuide={() => setGuideOpen(true)}
                 onOpenPersona={(persona) => openPersonaDetail(persona)}
               />
             )}
@@ -2261,6 +2264,8 @@ export default function HomePage() {
         onStartGroup={startGroupConversation}
         onDeletePersona={deleteLibraryPersona}
       />
+
+      <GuideDrawer open={guideOpen} onClose={() => setGuideOpen(false)} />
 
       <UserKnowledgeDrawer
         open={userKnowledgeOpen}
