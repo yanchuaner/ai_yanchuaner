@@ -8,6 +8,7 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  personaId?: string;
   requestId?: string;
   usage?: { prompt: number; completion: number };
 };

@@ -319,42 +319,51 @@ export function ChatStage({
                 )}
               </div>
             )}
-            {displayMessages.map((message) => (
-              <article className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant}`} key={message.id}>
-                <span className={styles.messageIcon}>
-                  {message.role === "user" ? <User size={16} aria-hidden="true" /> : activePersona?.avatar || <Bot size={16} aria-hidden="true" />}
-                </span>
-                <div className={styles.messageBody}>
-                  {message.content ? (
-                    <MessageContent content={message.content} />
-                  ) : (
-                    <span className={styles.thinking}>正在生成…</span>
-                  )}
-                  {message.role === "assistant" && (message.requestId || message.usage) && (
-                    <small className={styles.meta}>
-                      {message.requestId ? `request ${message.requestId}` : ""}
-                      {message.usage ? ` · 输入 ${message.usage.prompt} / 输出 ${message.usage.completion}` : ""}
-                    </small>
-                  )}
-                  {message.role === "assistant" && voiceTtsEnabled && message.content && (
-                    <button
-                      className={styles.speakButton}
-                      type="button"
-                      disabled={speakingId === message.id}
-                      onClick={() => {
-                        setVoiceError("");
-                        void onSpeak(message.id, message.content).catch((reason) => {
-                          setVoiceError(reason instanceof Error ? reason.message : "语音朗读失败。");
-                        });
-                      }}
-                    >
-                      <Volume2 size={13} aria-hidden="true" />
-                      {speakingId === message.id ? "朗读中…" : "朗读"}
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))}
+            {displayMessages.map((message) => {
+              const speaker =
+                message.role === "assistant" && message.personaId
+                  ? cast.find((persona) => persona.id === message.personaId)
+                  : activePersona;
+              return (
+                <article className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant}`} key={message.id}>
+                  <span className={styles.messageIcon}>
+                    {message.role === "user" ? <User size={16} aria-hidden="true" /> : speaker?.avatar || <Bot size={16} aria-hidden="true" />}
+                  </span>
+                  <div className={styles.messageBody}>
+                    {message.role === "assistant" && message.personaId && (
+                      <small className={styles.speakerName}>{speaker?.name || "群成员"}</small>
+                    )}
+                    {message.content ? (
+                      <MessageContent content={message.content} />
+                    ) : (
+                      <span className={styles.thinking}>正在生成…</span>
+                    )}
+                    {message.role === "assistant" && (message.requestId || message.usage) && (
+                      <small className={styles.meta}>
+                        {message.requestId ? `request ${message.requestId}` : ""}
+                        {message.usage ? ` · 输入 ${message.usage.prompt} / 输出 ${message.usage.completion}` : ""}
+                      </small>
+                    )}
+                    {message.role === "assistant" && voiceTtsEnabled && message.content && (
+                      <button
+                        className={styles.speakButton}
+                        type="button"
+                        disabled={speakingId === message.id}
+                        onClick={() => {
+                          setVoiceError("");
+                          void onSpeak(message.id, message.content).catch((reason) => {
+                            setVoiceError(reason instanceof Error ? reason.message : "语音朗读失败。");
+                          });
+                        }}
+                      >
+                        <Volume2 size={13} aria-hidden="true" />
+                        {speakingId === message.id ? "朗读中…" : "朗读"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
             <div ref={endRef} />
           </div>
 

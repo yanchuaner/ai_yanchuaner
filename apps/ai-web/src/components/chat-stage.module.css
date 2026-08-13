@@ -388,6 +388,14 @@
   animation: thinkingPulse 1.4s ease-in-out infinite;
 }
 
+.speakerName {
+  color: var(--brand);
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
 @keyframes thinkingPulse {
   0%,
   100% {

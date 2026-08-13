@@ -11,6 +11,7 @@ export type StoredMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  personaId?: string;
   requestId?: string;
   usage?: StoredUsage;
 };
@@ -75,6 +76,12 @@ export function isValidStoredMessage(message: unknown): message is StoredMessage
   const candidate = message as Record<string, unknown>;
   if (candidate.role !== "user" && candidate.role !== "assistant") return false;
   if (typeof candidate.content !== "string" || candidate.content.length === 0 || candidate.content.length > 16_000) {
+    return false;
+  }
+  if (
+    candidate.personaId !== undefined &&
+    (typeof candidate.personaId !== "string" || candidate.personaId.length === 0 || candidate.personaId.length > 64)
+  ) {
     return false;
   }
   if (candidate.requestId !== undefined && (typeof candidate.requestId !== "string" || candidate.requestId.length > 128)) {

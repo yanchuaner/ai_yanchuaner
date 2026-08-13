@@ -884,6 +884,33 @@ export default function HomePage() {
       ...messages,
       userMessage,
     ].map(({ role, content: messageContent }) => ({ role, content: messageContent }));
+    if (activeMode === "group" && activeCast.length > 0) {
+      setMessages((current) => [...current, userMessage]);
+      setPrompt("");
+      setError("");
+      setPending(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: userMessage.id, role: "user", content }),
+        });
+        await runGroupTurn(targetConversationId, requestMessages, controller);
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : "模型请求失败。";
+        if (message.includes("登录会话已失效")) {
+          handleSessionExpired();
+          return;
+        }
+        if (!controller.signal.aborted) setError(message);
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
+        setPending(false);
+      }
+      return;
+    }
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setPrompt("");
     setError("");
@@ -1003,6 +1030,158 @@ export default function HomePage() {
       if (abortRef.current === controller) abortRef.current = null;
       setPending(false);
     }
+  }
+
+  async function runGroupTurn(
+    targetConversationId: string,
+    requestMessages: { role: "system" | "user" | "assistant"; content: string }[],
+    controller: AbortController,
+  ) {
+    const scheduleResponse = await fetch("/api/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: requestMessages,
+        knowledge: Boolean(activeCast.length) && knowledgeEnabled,
+        conversationId: targetConversationId,
+        groupSchedule: true,
+      }),
+      signal: controller.signal,
+    });
+    if (scheduleResponse.status === 401) {
+      handleSessionExpired();
+      throw new Error("登录会话已失效，请重新登录。");
+    }
+    const scheduleBody = await scheduleResponse.json().catch(() => null);
+    if (!scheduleResponse.ok || !Array.isArray(scheduleBody?.speakers) || scheduleBody.speakers.length === 0) {
+      throw new Error(scheduleBody?.error || "群聊调度失败，请稍后再试。");
+    }
+    const speakers = scheduleBody.speakers as { id: string; name: string }[];
+    const turnKey = crypto.randomUUID();
+    const messageIdBySpeaker = new Map(speakers.map((speaker) => [speaker.id, `group-${speaker.id}-${turnKey}`]));
+    setMessages((current) => [
+      ...current,
+      ...speakers.map((speaker) => ({
+        id: messageIdBySpeaker.get(speaker.id) as string,
+        role: "assistant" as const,
+        content: "",
+        personaId: speaker.id,
+      })),
+    ]);
+    const results = await Promise.allSettled(
+      speakers.map(async (speaker) => {
+        const response = await fetch("/api/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: requestMessages,
+            knowledge: Boolean(activeCast.length) && knowledgeEnabled,
+            conversationId: targetConversationId,
+            speakerId: speaker.id,
+          }),
+          signal: controller.signal,
+        });
+        const requestId = response.headers.get("x-request-id") || "";
+        if (response.status === 401) {
+          handleSessionExpired();
+          throw new Error("登录会话已失效，请重新登录。");
+        }
+        if (!response.ok || !response.body) {
+          const body = await response.json().catch(() => null);
+          throw new Error(body?.error || `${speaker.name} 发言失败。`);
+        }
+        const messageId = messageIdBySpeaker.get(speaker.id) as string;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let content = "";
+        let usage: { prompt_tokens?: number; completion_tokens?: number } | null = null;
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+          for (const block of events) {
+            for (const line of block.split("\n")) {
+              if (!line.startsWith("data:")) continue;
+              const data = line.slice(5).trim();
+              if (!data || data === "[DONE]") continue;
+              const chunk = JSON.parse(data);
+              if (typeof chunk?.error?.message === "string") throw new Error(chunk.error.message);
+              if (chunk?.usage) usage = chunk.usage;
+              const delta = chunk?.choices?.[0]?.delta?.content;
+              if (typeof delta === "string" && delta.length > 0) {
+                content += delta;
+                setMessages((current) =>
+                  current.map((message) =>
+                    message.id === messageId ? { ...message, content: message.content + delta } : message,
+                  ),
+                );
+              }
+            }
+          }
+          if (done) break;
+        }
+        if (!content) throw new Error(`${speaker.name} 未返回可显示内容。`);
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  requestId,
+                  usage: usage
+                    ? {
+                        prompt: usage.prompt_tokens ?? 0,
+                        completion: usage.completion_tokens ?? 0,
+                      }
+                    : undefined,
+                }
+              : message,
+          ),
+        );
+        await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: messageId,
+            role: "assistant",
+            content,
+            personaId: speaker.id,
+            requestId,
+            usage: usage
+              ? {
+                  prompt: usage.prompt_tokens ?? 0,
+                  completion: usage.completion_tokens ?? 0,
+                }
+              : undefined,
+          }),
+        });
+      }),
+    );
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failures.length > 0) {
+      const failedSpeakers = failures.map(
+        (failure) => (failure.reason instanceof Error ? failure.reason.message : "发言失败。"),
+      );
+      setMessages((current) =>
+        current.filter(
+          (message) =>
+            !(
+              message.role === "assistant" &&
+              message.content === "" &&
+              message.personaId &&
+              [...messageIdBySpeaker.values()].includes(message.id)
+            ),
+        ),
+      );
+      throw new Error(failedSpeakers.join("；"));
+    }
+    await loadBalance();
+    await loadConversations();
   }
 
   const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
