@@ -454,7 +454,9 @@ export function ChatStage({
             <section className={styles.contextSection}>
               <h3>长期记忆</h3>
               {activeMode === "group" ? (
-                <p className={styles.knowledgeHits}>群聊暂不自动整理记忆。</p>
+                <p className={styles.knowledgeHits}>
+                  群聊满 15 条后自动为每位成员整理记忆，后续群聊会携带各自经历。
+                </p>
               ) : memoryState === "generating" ? (
                 <p className={styles.knowledgeHits}>正在整理这段对话的记忆…</p>
               ) : memoryState === "error" ? (
