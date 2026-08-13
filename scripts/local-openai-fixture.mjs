@@ -123,6 +123,24 @@ const server = http.createServer(async (request, response) => {
     }
     return;
   }
+  if (request.method === "POST" && url.pathname === "/v1/audio/speech") {
+    try {
+      const body = await readJson(request);
+      if (!body.model || typeof body.input !== "string" || !body.input) {
+        json(response, 400, { error: { message: "invalid tts request", type: "invalid_request_error" } });
+        return;
+      }
+      response.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "audio/mpeg",
+        "X-Content-Type-Options": "nosniff",
+      });
+      response.end(Buffer.from([0x49, 0x44, 0x33, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]));
+    } catch {
+      json(response, 400, { error: { message: "invalid tts payload", type: "invalid_request_error" } });
+    }
+    return;
+  }
   if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
     json(response, 404, { error: { message: "fixture route not found", type: "invalid_request_error" } });
     return;

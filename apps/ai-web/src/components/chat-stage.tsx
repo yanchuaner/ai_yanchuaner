@@ -5,11 +5,13 @@ import {
   Check,
   Download,
   LogOut,
+  Mic,
   Pencil,
   Plus,
   ReceiptText,
   Send,
   Square,
+  Volume2,
   Trash2,
   User,
   X,
@@ -51,6 +53,11 @@ type ChatStageProps = {
   onNewChat: () => void;
   onLogout: () => void;
   onOpenTools: () => void;
+  voiceAsrEnabled: boolean;
+  voiceTtsEnabled: boolean;
+  speakingId: string | null;
+  onAsr: (file: File) => Promise<string>;
+  onSpeak: (messageId: string, text: string) => Promise<void>;
 };
 
 export function ChatStage({
@@ -84,10 +91,19 @@ export function ChatStage({
   onNewChat,
   onLogout,
   onOpenTools,
+  voiceAsrEnabled,
+  voiceTtsEnabled,
+  speakingId,
+  onAsr,
+  onSpeak,
 }: ChatStageProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(conversationTitle);
   const [contextOpen, setContextOpen] = useState(true);
+  const [recording, setRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -121,6 +137,39 @@ export function ChatStage({
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     onSubmit();
+  }
+
+  async function toggleRecording() {
+    setVoiceError("");
+    if (recording) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setRecording(false);
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        if (blob.size === 0) return;
+        try {
+          const text = await onAsr(new File([blob], "voice.webm", { type: blob.type }));
+          if (text.trim()) onPromptChange(text);
+        } catch (reason) {
+          setVoiceError(reason instanceof Error ? reason.message : "语音转文字失败。");
+        }
+      };
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setVoiceError("无法访问麦克风，请检查浏览器权限。");
+    }
   }
 
   return (
@@ -287,6 +336,17 @@ export function ChatStage({
                       {message.usage ? ` · 输入 ${message.usage.prompt} / 输出 ${message.usage.completion}` : ""}
                     </small>
                   )}
+                  {message.role === "assistant" && voiceTtsEnabled && message.content && (
+                    <button
+                      className={styles.speakButton}
+                      type="button"
+                      disabled={speakingId === message.id}
+                      onClick={() => void onSpeak(message.id, message.content)}
+                    >
+                      <Volume2 size={13} aria-hidden="true" />
+                      {speakingId === message.id ? "朗读中…" : "朗读"}
+                    </button>
+                  )}
                 </div>
               </article>
             ))}
@@ -294,6 +354,11 @@ export function ChatStage({
           </div>
 
           <div className={styles.composerWrap}>
+            {voiceError && (
+              <p className={styles.error} role="alert">
+                {voiceError}
+              </p>
+            )}
             {error && (
               <p className={styles.error} role="alert">
                 {error}
@@ -319,9 +384,21 @@ export function ChatStage({
                   <Square size={16} fill="currentColor" aria-hidden="true" />
                 </button>
               ) : (
-                <button className={styles.send} type="submit" disabled={!prompt.trim() || !model} title="发送" aria-label="发送">
-                  <Send size={17} aria-hidden="true" />
-                </button>
+                <>
+                  <button
+                    className={`${styles.micButton} ${recording ? styles.micRecording : ""}`}
+                    type="button"
+                    disabled={!voiceAsrEnabled}
+                    onClick={() => void toggleRecording()}
+                    title={voiceAsrEnabled ? (recording ? "停止录音" : "语音输入") : "未配置语音输入"}
+                    aria-label={recording ? "停止录音" : "语音输入"}
+                  >
+                    {recording ? <Square size={15} fill="currentColor" aria-hidden="true" /> : <Mic size={17} aria-hidden="true" />}
+                  </button>
+                  <button className={styles.send} type="submit" disabled={!prompt.trim() || !model} title="发送" aria-label="发送">
+                    <Send size={17} aria-hidden="true" />
+                  </button>
+                </>
               )}
             </form>
             <button className={styles.contextToggle} type="button" onClick={() => setContextOpen((open) => !open)}>
