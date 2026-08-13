@@ -50,6 +50,7 @@
 .balance { align-items: baseline; border: 1px solid var(--line); border-radius: 6px; display: inline-flex; gap: 7px; padding: 6px 10px; }
 .balance small { color: var(--text-muted); font-size: 11px; }
 .balance strong { color: var(--brand); font-size: 13px; }
+.persona-chip { align-items: center; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 999px; color: var(--text); display: inline-flex; font-size: 12px; gap: 6px; max-width: 220px; overflow: hidden; padding: 6px 11px; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-picker, .model-picker { align-items: center; display: flex; gap: 9px; }
 .conversation-picker span, .model-picker span { color: var(--text-muted); font-size: 12px; }
 .conversation-picker select, .model-picker select { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font-size: 13px; height: 36px; max-width: 260px; min-width: 180px; padding: 0 32px 0 10px; }
@@ -89,6 +90,8 @@
 .empty-state > span { color: var(--brand); display: inline-flex; }
 .empty-state h1 { color: var(--text); font-size: 22px; margin: 14px 0 6px; }
 .empty-state p { font-size: 13px; margin: 0; }
+.ghost-action { align-items: center; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 6px; color: var(--text); cursor: pointer; display: inline-flex; font-size: 13px; gap: 8px; margin-top: 18px; min-height: 38px; padding: 0 14px; }
+.ghost-action:hover { border-color: var(--brand); color: var(--brand); }
 .message { display: grid; gap: 14px; grid-template-columns: 34px minmax(0, 1fr); line-height: 1.7; margin: 0 0 26px; overflow-wrap: anywhere; }
 .message > div { min-width: 0; padding-top: 4px; white-space: pre-wrap; }
 .message.user > div { color: #dfe7f0; }

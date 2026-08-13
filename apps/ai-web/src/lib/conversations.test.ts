@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import {
 	getConversationDetail,
 	listConversations,
 } from "./conversations";
+import { PRESET_PERSONAS } from "./personas";
 
 async function withDataDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "ai-web-conversations-"));
@@ -86,5 +87,47 @@ test("conversation can be exported and deleted without affecting other users", a
 		await assert.rejects(() => getConversation(11, conversation.id), /conversation not found/);
 		await assert.rejects(() => deleteConversation(11, conversation.id), /conversation not found/);
 		await assert.rejects(() => deleteConversation(12, conversation.id), /conversation not found/);
+	});
+});
+
+test("roleplay conversations persist mode and persona snapshot", async () => {
+	await withDataDir(async () => {
+		const persona = PRESET_PERSONAS[0];
+		const conversation = await createConversation(7, { mode: "roleplay", persona });
+		assert.equal(conversation.mode, "roleplay");
+		assert.equal(conversation.personaName, persona.name);
+
+		const detail = await getConversationDetail(7, conversation.id);
+		assert.equal(detail.mode, "roleplay");
+		assert.deepEqual(detail.persona, persona);
+
+		await assert.rejects(() => createConversation(7, { mode: "roleplay" }), /persona is invalid/);
+		await assert.rejects(
+			() => createConversation(7, { mode: "roleplay", persona: { ...persona, name: "" } }),
+			/persona is invalid/,
+		);
+
+		const plain = await createConversation(7);
+		assert.equal(plain.mode, "chat");
+		assert.equal(plain.personaName, undefined);
+		const plainDetail = await getConversationDetail(7, plain.id);
+		assert.equal(plainDetail.persona, undefined);
+	});
+});
+
+test("old conversations without a mode are read as plain chat", async () => {
+	await withDataDir(async (dir) => {
+		const conversation = await createConversation(12);
+		await appendMessage(12, conversation.id, { id: "m1", role: "user", content: "旧数据" });
+		const file = path.join(dir, "conversations", "12.json");
+		const raw = JSON.parse(await readFile(file, "utf8"));
+		for (const item of raw.conversations) {
+			delete item.mode;
+		}
+		await writeFile(file, JSON.stringify(raw));
+
+		const detail = await getConversationDetail(12, conversation.id);
+		assert.equal(detail.mode, "chat");
+		assert.equal(detail.messages.length, 1);
 	});
 });
