@@ -1,0 +1,32 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 12% 16%, rgba(255, 255, 255, 0.18) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 78% 24%, rgba(103, 212, 232, 0.2) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 42% 82%, rgba(240, 198, 107, 0.16) 0 1px, transparent 1.5px);
+  background-size: 180px 180px, 240px 240px, 210px 210px;
+  color: var(--text);
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+button,
+a,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select {
+  cursor: pointer;
+}
