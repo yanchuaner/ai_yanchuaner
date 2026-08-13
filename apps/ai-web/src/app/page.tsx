@@ -85,6 +85,7 @@ export default function HomePage() {
   const [view, setView] = useState<AppView>("home");
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [activePersona, setActivePersona] = useState<Persona | undefined>();
+  const [activeCast, setActiveCast] = useState<Persona[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<DetailState>({ open: false });
   const [personaKnowledge, setPersonaKnowledge] = useState<PersonaKnowledge | null>(null);
@@ -116,6 +117,7 @@ export default function HomePage() {
     setSession({ status: "anonymous" });
     setConversationId(null);
     setMessages([]);
+    setActiveCast([]);
     setPending(false);
   }
 
@@ -264,6 +266,7 @@ export default function HomePage() {
     setConversationId(id);
     setMessages(detailResponse.messages);
     setActivePersona(detailResponse.persona ?? undefined);
+    setActiveCast(Array.isArray(detailResponse.cast) ? detailResponse.cast : []);
     setLastKnowledgeHits(null);
     void loadMemoryForConversation(id);
   }
@@ -431,6 +434,26 @@ export default function HomePage() {
     setView("chat");
   }
 
+  async function startGroupConversation(cast: Persona[], director?: Persona) {
+    const response = await fetch("/api/chat/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "group", cast, director }),
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.conversation?.id) throw new Error(body?.error || "创建群聊失败。");
+    setConversationId(body.conversation.id);
+    setConversations((current) => [body.conversation, ...current]);
+    setMessages([]);
+    setActivePersona(undefined);
+    setActiveCast(cast);
+    setError("");
+    setSetupOpen(false);
+    setDetail({ open: false });
+    setView("chat");
+  }
+
   async function switchToPlain() {
     const recent = conversations.find(
       (conversation) => conversation.mode === "chat" && !conversation.archived,
@@ -481,6 +504,7 @@ export default function HomePage() {
       setConversationId(null);
       setMessages([]);
       setActivePersona(undefined);
+      setActiveCast([]);
     }
     await loadConversations();
   }
@@ -711,7 +735,8 @@ export default function HomePage() {
         body: JSON.stringify({
           model,
           messages: requestMessages,
-          knowledge: activeMode === "roleplay" && Boolean(activePersona) && knowledgeEnabled,
+          knowledge:
+            (activeMode === "roleplay" || activeMode === "group") && Boolean(activePersona || activeCast.length) && knowledgeEnabled,
           conversationId: targetConversationId,
         }),
         signal: controller.signal,
@@ -938,7 +963,8 @@ export default function HomePage() {
                 onChangeTitle={(title) => conversationId && void updateConversationMeta(conversationId, { title })}
                 activeMode={activeMode}
                 activePersona={activePersona}
-                onOpenPersonaDetail={() => activePersona && openPersonaDetail(activePersona)}
+                cast={activeCast}
+                onOpenPersonaDetail={(persona) => openPersonaDetail(persona)}
                 messages={messages}
                 quickPersonas={quickPersonas}
                 onQuickSwitch={(persona) => {
@@ -1196,6 +1222,7 @@ export default function HomePage() {
         onClose={() => setSetupOpen(false)}
         onStartChat={startPlainConversation}
         onStartRoleplay={startRoleplayConversation}
+        onStartGroup={startGroupConversation}
         onDeletePersona={deleteLibraryPersona}
       />
 

@@ -15,9 +15,8 @@ export type StoredMessage = {
   usage?: StoredUsage;
 };
 
-// 会话模式。当前只有普通助手与单人角色扮演；
-// 后续多 AI 群聊会新增 group 模式，并在会话上扩展 cast 等字段，不迁移现有数据。
-export type ChatMode = "chat" | "roleplay";
+// 会话模式：普通助手、单人角色扮演、多人群聊。
+export type ChatMode = "chat" | "roleplay" | "group";
 
 export type StoredConversation = {
   id: string;
@@ -26,6 +25,8 @@ export type StoredConversation = {
   updatedAt: number;
   mode: ChatMode;
   persona?: Persona;
+  cast?: Persona[];
+  director?: Persona;
   pinned?: boolean;
   archived?: boolean;
   messages: StoredMessage[];
@@ -39,6 +40,7 @@ export type ConversationSummary = {
   mode: ChatMode;
   personaName?: string;
   personaId?: string;
+  personaIds?: string[];
   pinned?: boolean;
   archived?: boolean;
 };
@@ -49,6 +51,8 @@ export type ConversationDetail = {
   updatedAt: number;
   mode: ChatMode;
   persona?: Persona;
+  cast?: Persona[];
+  director?: Persona;
   pinned?: boolean;
   archived?: boolean;
   messages: StoredMessage[];
@@ -110,8 +114,20 @@ function normalizeConversation(raw: unknown): StoredConversation | null {
     title: candidate.title,
     createdAt: candidate.createdAt,
     updatedAt: candidate.updatedAt,
-    mode: candidate.mode === "roleplay" ? "roleplay" : "chat",
-    persona: isValidPersona(candidate.persona) ? candidate.persona : undefined,
+    mode:
+      candidate.mode === "roleplay"
+        ? "roleplay"
+        : candidate.mode === "group" && Array.isArray(candidate.cast) && candidate.cast.filter(isValidPersona).length >= 2
+          ? "group"
+          : "chat",
+    persona:
+      candidate.mode === "roleplay" && isValidPersona(candidate.persona) ? candidate.persona : undefined,
+    cast:
+      candidate.mode === "group" && Array.isArray(candidate.cast)
+        ? candidate.cast.filter(isValidPersona).slice(0, 4)
+        : undefined,
+    director:
+      candidate.mode === "group" && isValidPersona(candidate.director) ? candidate.director : undefined,
     pinned: candidate.pinned === true,
     archived: candidate.archived === true,
     messages: candidate.messages.filter(isValidStoredMessage),
@@ -145,6 +161,12 @@ function summarize(conversation: StoredConversation): ConversationSummary {
     mode: conversation.mode,
     personaName: conversation.persona?.name,
     personaId: conversation.persona?.id,
+    personaIds:
+      conversation.mode === "roleplay"
+        ? conversation.persona
+          ? [conversation.persona.id]
+          : undefined
+        : conversation.cast?.map((persona) => persona.id),
     pinned: conversation.pinned,
     archived: conversation.archived,
   };
@@ -179,6 +201,8 @@ export async function getConversationDetail(userId: number, conversationId: stri
     updatedAt: conversation.updatedAt,
     mode: conversation.mode,
     persona: conversation.persona,
+    cast: conversation.cast,
+    director: conversation.director,
     pinned: conversation.pinned,
     archived: conversation.archived,
     messages: conversation.messages.slice(),
@@ -196,25 +220,47 @@ export async function deleteConversation(userId: number, conversationId: string)
 export type CreateConversationOptions = {
   mode?: ChatMode;
   persona?: Persona;
+  cast?: Persona[];
+  director?: Persona;
 };
 
 export async function createConversation(
   userId: number,
   options: CreateConversationOptions = {},
 ): Promise<ConversationSummary> {
-  const mode = options.mode === "roleplay" ? "roleplay" : "chat";
+  const mode = options.mode === "roleplay" ? "roleplay" : options.mode === "group" ? "group" : "chat";
+  let cast: Persona[] | undefined;
+  let director: Persona | undefined;
   if (mode === "roleplay" && (!options.persona || !isValidPersona(options.persona))) {
     throw new Error("persona is invalid");
   }
+  if (mode === "group") {
+    cast = Array.isArray(options.cast) ? options.cast.filter(isValidPersona) : [];
+    if (cast.length < 2 || cast.length > 4 || new Set(cast.map((persona) => persona.id)).size !== cast.length) {
+      throw new Error("cast is invalid");
+    }
+    if (options.director !== undefined && !isValidPersona(options.director)) {
+      throw new Error("director is invalid");
+    }
+    director = options.director;
+  }
   const store = await readStore(userId);
   const now = Date.now();
+  const title =
+    mode === "group"
+      ? cast!.map((persona) => persona.name).join(" × ")
+      : mode === "roleplay"
+        ? options.persona?.name ?? DEFAULT_TITLE
+        : DEFAULT_TITLE;
   const conversation: StoredConversation = {
     id: randomUUID(),
-    title: mode === "roleplay" ? options.persona?.name ?? DEFAULT_TITLE : DEFAULT_TITLE,
+    title,
     createdAt: now,
     updatedAt: now,
     mode,
     persona: mode === "roleplay" ? options.persona : undefined,
+    cast: mode === "group" ? cast! : undefined,
+    director: mode === "group" ? director : undefined,
     messages: [],
   };
   store.conversations.push(conversation);

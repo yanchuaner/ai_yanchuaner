@@ -1,11 +1,11 @@
 "use client";
 
-import { Bot, Plus, Sparkles, Theater, Trash2, X } from "lucide-react";
+import { Bot, Plus, Sparkles, Theater, Trash2, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PersonaForm } from "@/components/persona-form";
 import { KnowledgeDraftInput } from "@/components/knowledge-draft";
 import { type Persona } from "@/lib/personas";
 import type { KnowledgeDraft } from "@/lib/types";
-import { PersonaForm } from "@/components/persona-form";
 import styles from "./persona-setup.module.css";
 
 type PersonaSetupProps = {
@@ -15,8 +15,11 @@ type PersonaSetupProps = {
   onClose: () => void;
   onStartChat: () => Promise<void>;
   onStartRoleplay: (persona: Persona, saveToLibrary: boolean, knowledge?: KnowledgeDraft) => Promise<void>;
+  onStartGroup: (cast: Persona[], director?: Persona) => Promise<void>;
   onDeletePersona: (id: string) => Promise<void>;
 };
+
+type Step = "mode" | "library" | "editor" | "group";
 
 export function PersonaSetup({
   open,
@@ -25,11 +28,14 @@ export function PersonaSetup({
   onClose,
   onStartChat,
   onStartRoleplay,
+  onStartGroup,
   onDeletePersona,
 }: PersonaSetupProps) {
-  const [step, setStep] = useState<"mode" | "library" | "editor">("mode");
+  const [step, setStep] = useState<Step>("mode");
   const [saveToLibrary, setSaveToLibrary] = useState(true);
   const [knowledgeDraft, setKnowledgeDraft] = useState<KnowledgeDraft>({ name: "", text: "" });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [directorId, setDirectorId] = useState("none");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -38,6 +44,8 @@ export function PersonaSetup({
       setStep("mode");
       setSaveToLibrary(true);
       setKnowledgeDraft({ name: "", text: "" });
+      setSelectedIds([]);
+      setDirectorId("none");
       setError("");
       setBusy(false);
     }
@@ -71,13 +79,39 @@ export function PersonaSetup({
     void run(() => onDeletePersona(persona.id));
   }
 
-  const heading = step === "mode" ? "开始新对话" : step === "library" ? "选择角色" : "自定义角色";
+  function togglePersona(personaId: string) {
+    setError("");
+    setSelectedIds((current) => {
+      if (current.includes(personaId)) return current.filter((id) => id !== personaId);
+      if (current.length >= 4) {
+        setError("群聊最多选择 4 个角色。");
+        return current;
+      }
+      return [...current, personaId];
+    });
+  }
+
+  async function submitGroup() {
+    const all = [...presets, ...library];
+    const cast = all.filter((persona) => selectedIds.includes(persona.id));
+    if (cast.length < 2) {
+      setError("请至少选择 2 个角色。");
+      return;
+    }
+    const director = directorId === "none" ? undefined : all.find((persona) => persona.id === directorId);
+    await run(() => onStartGroup(cast, director));
+  }
+
+  const heading =
+    step === "mode" ? "开始新对话" : step === "library" ? "选择角色" : step === "editor" ? "自定义角色" : "群聊成员";
   const subtitle =
     step === "mode"
-      ? "普通助手直接问答；角色扮演可以自定人物、场景与剧情。"
+      ? "普通助手直接问答；角色扮演可以自定人物、场景与剧情；也可以拉上几位角色一起聊。"
       : step === "library"
         ? "使用预设角色或角色库中的角色，也可以新建自己的角色卡。"
-        : "角色卡越具体，扮演越稳定。";
+        : step === "editor"
+          ? "角色卡越具体，扮演越稳定。"
+          : "选择 2 到 4 个角色同台，可选一位导演负责旁白与场景。";
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="新对话设置">
@@ -113,6 +147,13 @@ export function PersonaSetup({
               </span>
               <strong>角色扮演</strong>
               <small>自定义人物、场景、世界观与剧情，进入沉浸式对话。</small>
+            </button>
+            <button className={styles.modeCard} type="button" disabled={busy} onClick={() => setStep("group")}>
+              <span className={styles.modeIcon}>
+                <Users size={22} aria-hidden="true" />
+              </span>
+              <strong>多人群聊</strong>
+              <small>选择 2 到 4 个角色同台，可选导演旁白，角色们轮流与你对话。</small>
             </button>
           </div>
         )}
@@ -157,6 +198,53 @@ export function PersonaSetup({
           </div>
         )}
 
+        {step === "group" && (
+          <div className={styles.library}>
+            <section>
+              <h3>选择成员（已选 {selectedIds.length} / 4）</h3>
+              <div className={styles.cardGrid}>
+                {[...presets, ...library].map((persona) => (
+                  <PersonaCard
+                    key={persona.id}
+                    persona={persona}
+                    disabled={busy}
+                    selectable
+                    selected={selectedIds.includes(persona.id)}
+                    onSelect={() => togglePersona(persona.id)}
+                    onDelete={persona.id.startsWith("custom-") ? () => confirmDelete(persona) : undefined}
+                  />
+                ))}
+              </div>
+            </section>
+            <section>
+              <h3>导演（可选）</h3>
+              <select
+                className={styles.directorSelect}
+                value={directorId}
+                onChange={(event) => setDirectorId(event.target.value)}
+                disabled={busy}
+              >
+                <option value="none">无导演</option>
+                {[...presets, ...library]
+                  .filter((persona) => selectedIds.includes(persona.id))
+                  .map((persona) => (
+                    <option value={persona.id} key={persona.id}>
+                      {persona.name}
+                    </option>
+                  ))}
+              </select>
+              <div className={styles.groupActions}>
+                <button className={styles.backButton} type="button" onClick={() => setStep("mode")} disabled={busy}>
+                  返回
+                </button>
+                <button className={styles.submitButton} type="button" onClick={() => void submitGroup()} disabled={busy}>
+                  <Sparkles size={16} aria-hidden="true" /> 开始群聊
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
         {step === "editor" && (
           <div className={styles.editor}>
             <label className={styles.checkbox}>
@@ -194,15 +282,24 @@ function PersonaCard({
   disabled,
   onSelect,
   onDelete,
+  selectable,
+  selected,
 }: {
   persona: Persona;
   disabled: boolean;
   onSelect: () => void;
   onDelete?: () => void;
+  selectable?: boolean;
+  selected?: boolean;
 }) {
   return (
-    <article className={styles.personaCard}>
+    <article className={`${styles.personaCard} ${selected ? styles.personaSelected : ""}`}>
       <button className={styles.personaMain} type="button" disabled={disabled} onClick={onSelect}>
+        {selectable && (
+          <span className={`${styles.checkMark} ${selected ? styles.checkMarkOn : ""}`}>
+            {selected && "✓"}
+          </span>
+        )}
         <span className={styles.avatar}>{persona.avatar || "🎭"}</span>
         <span className={styles.personaCopy}>
           <strong>{persona.name}</strong>

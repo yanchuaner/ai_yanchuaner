@@ -196,3 +196,91 @@ test("chat route retrieves persona knowledge and injects it as context", async (
     assert.doesNotMatch(seenBody, /sk-yc_/);
   });
 });
+
+test("chat route builds group context and retrieves each member's knowledge", async () => {
+  await withDataDir(async () => {
+    const first = {
+      id: "preset-star-traveler",
+      name: "星河旅者",
+      description: "星海旅者",
+      firstMessage: "欢迎",
+    };
+    const second = {
+      id: "preset-study-buddy",
+      name: "燕中学伴",
+      description: "校园伙伴",
+      firstMessage: "嗨",
+    };
+    const director = {
+      id: "preset-elder",
+      name: "长者",
+      description: "导演旁白",
+      firstMessage: "开始",
+    };
+    const conversation = await createConversation(7, { mode: "group", cast: [first, second], director });
+    await addKnowledgeDocument(
+      7,
+      first.id,
+      first.name,
+      { name: "星海资料", text: "她曾在星河中航行。" },
+      "BAAI/bge-m3",
+      () => Promise.resolve([[1, 0, 0]]),
+    );
+    await addKnowledgeDocument(
+      7,
+      second.id,
+      second.name,
+      { name: "校园资料", text: "他喜欢在操场看星星。" },
+      "BAAI/bge-m3",
+      () => Promise.resolve([[0, 1, 0]]),
+    );
+    await savePersonaMemory(7, {
+      personaId: director.id,
+      summary: "导演记得这是第一次群聊。",
+      sourceConversationId: conversation.id,
+      messageCount: 2,
+    });
+
+    let seenBody = "";
+    const fetcher: typeof fetch = async (_input, init) => {
+      const url = String(_input);
+      if (url.endsWith("/v1/embeddings")) {
+        return Response.json({
+          object: "list",
+          model: "BAAI/bge-m3",
+          data: [{ object: "embedding", index: 0, embedding: [1, 1, 0] }],
+          usage: { prompt_tokens: 3, total_tokens: 3 },
+        });
+      }
+      seenBody = String(init?.body);
+      return new Response("data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
+    };
+
+    const response = await handleChatCompletion(
+      authenticatedRequest(
+        "/api/chat/completions",
+        {
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: "聊聊星空和校园" }],
+          knowledge: true,
+          conversationId: conversation.id,
+        },
+        "https://ai.example.test",
+        ["deepseek-chat", "BAAI/bge-m3"],
+      ),
+      config,
+      fetcher,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-yan-knowledge-hits"), "2");
+    const forwarded = JSON.parse(seenBody);
+    assert.match(forwarded.messages[0].content, /多人角色扮演群聊/);
+    assert.match(forwarded.messages[0].content, /星河旅者/);
+    assert.match(forwarded.messages[0].content, /燕中学伴/);
+    assert.match(forwarded.messages[0].content, /【导演】/);
+    assert.match(forwarded.messages[1].content, /导演记得/);
+    assert.match(forwarded.messages[2].content, /星河旅者 · 星海资料/);
+    assert.match(forwarded.messages[2].content, /燕中学伴 · 校园资料/);
+    assert.equal(forwarded.messages[3].role, "user");
+  });
+});

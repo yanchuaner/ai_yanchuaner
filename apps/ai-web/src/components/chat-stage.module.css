@@ -133,6 +133,42 @@
   flex: 0 0 auto;
 }
 
+.castRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.castChip {
+  align-items: center;
+  background: var(--glass-bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px 0 5px;
+}
+
+.castChip:hover {
+  border-color: var(--line-strong);
+  color: var(--brand);
+}
+
+.castChip span {
+  align-items: center;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: 13px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
 .plainHint {
   color: var(--text-muted);
   font-size: 12px;
@@ -269,6 +305,24 @@
 .empty > span {
   color: var(--brand);
   display: inline-flex;
+}
+
+.castReady {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.castReady span {
+  align-items: center;
+  background: var(--brand-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: 26px;
+  height: 58px;
+  justify-content: center;
+  width: 58px;
 }
 
 .empty h1 {
@@ -512,6 +566,14 @@
 }
 
 .memorySummary {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.castMember {
   color: var(--text);
   font-size: 12px;
   line-height: 1.6;

@@ -54,7 +54,8 @@ export function ConversationSidebar({
   const items = conversations.filter((conversation) =>
     scope === "archived" ? conversation.archived : !conversation.archived,
   );
-  const visible = personaFilter === "all" ? items : items.filter((item) => item.personaId === personaFilter);
+  const visible =
+    personaFilter === "all" ? items : items.filter((item) => item.personaIds?.includes(personaFilter));
 
   return (
     <>
@@ -133,7 +134,7 @@ export function ConversationSidebar({
                 onClick={() => onSelect(conversation.id)}
               >
                 <span className={styles.title}>
-                  {conversation.mode === "roleplay" && <em className={styles.roleIcon}>🎭</em>}
+                  {conversation.mode !== "chat" && <em className={styles.roleIcon}>🎭</em>}
                   <span>{conversation.title || conversation.personaName || "未命名会话"}</span>
                 </span>
                 <span className={styles.meta}>
