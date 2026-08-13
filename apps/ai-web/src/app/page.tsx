@@ -1404,6 +1404,7 @@ export default function HomePage() {
                 favoriteIds={favoriteIds}
                 onOpenDetail={(persona) => openPersonaDetail(persona)}
                 onNewPersona={() => setDetail({ open: true, mode: "create" })}
+                onRefreshLibrary={loadPersonas}
               />
             )}
 

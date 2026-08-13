@@ -1,8 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deletePersona, updatePersona } from "@/lib/persona-library";
+import { deletePersona, listPersonas, updatePersona } from "@/lib/persona-library";
+import { personaToCharaCardV3 } from "@/lib/chara-card";
 import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const guard = requireAiSession(request);
+  if (guard.response) return guard.response;
+  const { id } = await params;
+  const personas = await listPersonas(guard.session.subject.userId);
+  const persona = personas.find((item) => item.id === id);
+  if (!persona) return NextResponse.json({ error: "角色不存在。" }, { status: 404 });
+  const card = personaToCharaCardV3(persona);
+  const filename = encodeURIComponent(`${persona.name}.json`);
+  return new NextResponse(JSON.stringify(card, null, 2), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename*=UTF-8''${filename}`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = requireAiSession(request);

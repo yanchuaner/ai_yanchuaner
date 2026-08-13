@@ -1,7 +1,7 @@
 "use client";
 
-import { Plus, Star } from "lucide-react";
-import { useState } from "react";
+import { Plus, Star, Upload } from "lucide-react";
+import { useRef, useState } from "react";
 import { type Persona } from "@/lib/personas";
 import styles from "./persona-library.module.css";
 
@@ -11,6 +11,7 @@ type PersonaLibraryProps = {
   favoriteIds: string[];
   onOpenDetail: (persona: Persona) => void;
   onNewPersona: () => void;
+  onRefreshLibrary: () => Promise<void>;
 };
 
 type Filter = "all" | "mine" | "favorites";
@@ -21,8 +22,11 @@ export function PersonaLibrary({
   favoriteIds,
   onOpenDetail,
   onNewPersona,
+  onRefreshLibrary,
 }: PersonaLibraryProps) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [importError, setImportError] = useState("");
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const favoritePresets = presets.filter((persona) => favoriteIds.includes(persona.id));
   const favoriteLibrary = library.filter((persona) => favoriteIds.includes(persona.id));
 
@@ -47,6 +51,25 @@ export function PersonaLibrary({
             { title: "收藏的角色", items: [...favoritePresets, ...favoriteLibrary] },
           ];
 
+  async function importCard(file: File) {
+    setImportError("");
+    try {
+      const text = await file.text();
+      const card = JSON.parse(text);
+      const response = await fetch("/api/personas/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ card }),
+      });
+      if (response.status === 401) return;
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || "导入角色失败。");
+      await onRefreshLibrary();
+    } catch (reason) {
+      setImportError(reason instanceof Error ? reason.message : "导入角色失败。");
+    }
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -57,7 +80,28 @@ export function PersonaLibrary({
         <button className={styles.create} type="button" onClick={onNewPersona}>
           <Plus size={16} aria-hidden="true" /> 新建角色
         </button>
+        <button
+          className={styles.create}
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          title="导入 chara_card_v3 角色卡"
+        >
+          <Upload size={16} aria-hidden="true" /> 导入角色
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void importCard(file);
+            event.target.value = "";
+          }}
+        />
       </header>
+
+      {importError && <p className={styles.error}>{importError}</p>}
 
       <div className={styles.tabs} role="tablist" aria-label="角色筛选">
         {(
