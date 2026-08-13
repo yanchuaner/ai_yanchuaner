@@ -27,7 +27,7 @@ export type ConversationSummary = {
   archived?: boolean;
 };
 
-export type AppView = "home" | "chat" | "personas";
+export type AppView = "home" | "chat" | "personas" | "worlds";
 
 export type PersonaWithMeta = {
   persona: Persona;
