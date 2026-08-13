@@ -1,17 +1,38 @@
 :root {
   color-scheme: dark;
 
-  /* 与 Lab 对齐的语义令牌名，颜色保持燕中 AI 的暗色星空方向。 */
-  --bg: #070b13;
+  /* 基础语义令牌：名称与 Lab 对齐，颜色保持燕中 AI 的星空暗色方向。 */
+  --bg: #060a12;
+  --bg-deep: #04070d;
   --surface: #101824;
   --surface-muted: #0c131d;
-  --surface-strong: #151f2d;
-  --text: #f4f7fb;
-  --text-muted: #9eacbc;
-  --line: #2b394b;
-  --brand: #67d4e8;
-  --accent: #f0c66b;
-  --danger: #ff8c8c;
-  --focus: #f0c66b;
+  --surface-strong: #182536;
+  --text: #f5f8fc;
+  --text-muted: #9fb0c2;
+  --line: rgba(91, 118, 146, 0.26);
+  --line-strong: rgba(103, 212, 232, 0.38);
+  --brand: #7ce3f2;
+  --brand-soft: rgba(103, 212, 232, 0.16);
+  --accent: #f5cf7d;
+  --danger: #ff8f8f;
+  --focus: #f5cf7d;
   --brand-ink: #061016;
+
+  /* 玻璃面板与阴影 */
+  --glass-bg: rgba(16, 24, 36, 0.72);
+  --glass-strong: rgba(18, 28, 42, 0.86);
+  --glass-blur: 16px;
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --radius-sm: 7px;
+  --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.38);
+  --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.3);
+
+  /* 角色封面渐变：与 personas.ts 中的 COVER_OPTIONS 一一对应 */
+  --cover-aurora: linear-gradient(135deg, #6fd9ec 0%, #6b8cff 55%, #b78bff 100%);
+  --cover-nebula: linear-gradient(135deg, #2b3f6b 0%, #7b2d8b 58%, #f0c66b 100%);
+  --cover-ocean: linear-gradient(135deg, #0e4d6e 0%, #2ba4a0 100%);
+  --cover-forest: linear-gradient(135deg, #123c2e 0%, #4f9d69 100%);
+  --cover-sunset: linear-gradient(135deg, #7a2d3f 0%, #e08b57 60%, #f0c66b 100%);
+  --cover-galaxy: linear-gradient(135deg, #111a35 0%, #3b2a6b 55%, #7ce3f2 100%);
 }

@@ -1,0 +1,33 @@
+// 前端各组件共享的类型，避免每个组件各自维护一份。
+
+import type { Persona } from "@/lib/personas";
+
+export type ChatMode = "chat" | "roleplay";
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  requestId?: string;
+  usage?: { prompt: number; completion: number };
+};
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messageCount: number;
+  mode: ChatMode;
+  personaName?: string;
+  personaId?: string;
+  pinned?: boolean;
+  archived?: boolean;
+};
+
+export type AppView = "home" | "chat" | "personas";
+
+export type PersonaWithMeta = {
+  persona: Persona;
+  favorite: boolean;
+  recentConversationId?: string;
+};

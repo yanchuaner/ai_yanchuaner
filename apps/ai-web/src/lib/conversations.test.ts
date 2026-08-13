@@ -10,6 +10,7 @@ import {
 	getConversation,
 	getConversationDetail,
 	listConversations,
+	updateConversation,
 } from "./conversations";
 import { PRESET_PERSONAS } from "./personas";
 
@@ -129,5 +130,32 @@ test("old conversations without a mode are read as plain chat", async () => {
 		const detail = await getConversationDetail(12, conversation.id);
 		assert.equal(detail.mode, "chat");
 		assert.equal(detail.messages.length, 1);
+	});
+});
+
+test("conversations can be renamed, pinned, archived and filtered by persona", async () => {
+	await withDataDir(async () => {
+		const persona = PRESET_PERSONAS[1];
+		const roleplay = await createConversation(13, { mode: "roleplay", persona });
+		const plain = await createConversation(13);
+		await appendMessage(13, plain.id, { id: "m1", role: "user", content: "随便聊聊" });
+
+		const renamed = await updateConversation(13, plain.id, { title: "改名后的会话" });
+		assert.equal(renamed.title, "改名后的会话");
+
+		const pinned = await updateConversation(13, plain.id, { pinned: true });
+		assert.equal(pinned.pinned, true);
+		const archived = await updateConversation(13, roleplay.id, { archived: true });
+		assert.equal(archived.archived, true);
+
+		const list = await listConversations(13);
+		assert.equal(list[0].id, plain.id, "置顶会话排在最前");
+		const roleplaySummary = list.find((item) => item.id === roleplay.id);
+		assert.equal(roleplaySummary?.personaId, persona.id);
+		assert.equal(roleplaySummary?.archived, true);
+
+		await assert.rejects(() => updateConversation(13, plain.id, { title: "" }), /title is invalid/);
+		await assert.rejects(() => updateConversation(13, "missing", { pinned: true }), /not found/);
+		await assert.rejects(() => updateConversation(14, plain.id, { pinned: true }), /not found/);
 	});
 });

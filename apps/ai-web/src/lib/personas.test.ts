@@ -37,6 +37,8 @@ test("persona input accepts optional DIY sections and rejects invalid fields", (
   assert.ok(!isValidPersonaInput({ ...input, style: "x".repeat(601) }));
   assert.ok(!isValidPersonaInput({ ...input, tags: ["", "x".repeat(21)] }));
   assert.ok(!isValidPersonaInput({ ...input, tags: Array.from({ length: 9 }, () => "标签") }));
+  assert.ok(!isValidPersonaInput({ ...input, cover: "custom-css" }));
+  assert.ok(isValidPersonaInput({ ...input, cover: "galaxy", examples: "用户：你好\n角色：欢迎。" }));
 });
 
 test("buildPersona trims fields, drops empty optional sections and deduplicates tags", () => {
@@ -46,6 +48,8 @@ test("buildPersona trims fields, drops empty optional sections and deduplicates 
     firstMessage: " 你好 ",
     style: " ",
     world: undefined,
+    cover: "aurora",
+    examples: "示例",
     tags: [" 科幻 ", "", "科幻"],
   });
   assert.equal(persona.name, "向导");
@@ -53,6 +57,8 @@ test("buildPersona trims fields, drops empty optional sections and deduplicates 
   assert.equal(persona.firstMessage, "你好");
   assert.equal(persona.style, undefined);
   assert.equal(persona.world, undefined);
+  assert.equal(persona.cover, "aurora");
+  assert.equal(persona.examples, "示例");
   assert.deepEqual(persona.tags, ["科幻"]);
 });
 
@@ -67,4 +73,16 @@ test("system prompt omits empty optional sections", () => {
   assert.doesNotMatch(prompt, /【当前场景】/);
   assert.doesNotMatch(prompt, /【故事线】/);
   assert.doesNotMatch(prompt, /【说话风格】/);
+});
+
+test("system prompt includes example dialogue when present", () => {
+  const prompt = personaSystemPrompt({
+    id: "x",
+    name: "向导",
+    description: "描述",
+    firstMessage: "你好",
+    examples: "用户：你好\n向导：欢迎。",
+  });
+  assert.match(prompt, /【示例对话】/);
+  assert.match(prompt, /欢迎。/);
 });

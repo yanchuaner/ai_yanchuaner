@@ -1,11 +1,25 @@
 "use client";
 
-import { Bot, Coins, Download, KeyRound, LogIn, LogOut, PanelLeft, Plus, ReceiptText, Send, ShieldCheck, SlidersHorizontal, Sparkles, Square, Theater, Trash2, User } from "lucide-react";
+import {
+  Coins,
+  KeyRound,
+  LogIn,
+  PanelLeft,
+  ReceiptText,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { ChatStage } from "@/components/chat-stage";
 import { Drawer } from "@/components/drawer";
+import { HomeView } from "@/components/home-view";
+import { PersonaDetail } from "@/components/persona-detail";
+import { PersonaLibrary } from "@/components/persona-library";
 import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
-import { personaSystemPrompt, PRESET_PERSONAS, type Persona } from "@/lib/personas";
+import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
+import type { AppView, ChatMessage, ConversationSummary } from "@/lib/types";
 
 type SessionState =
   | { status: "loading" }
@@ -19,46 +33,33 @@ type SessionState =
       expiresAt: number;
     };
 
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  requestId?: string;
-	usage?: { prompt: number; completion: number };
-};
-
-type ConversationSummary = {
-	id: string;
-	title: string;
-	updatedAt: number;
-	messageCount: number;
-	mode: "chat" | "roleplay";
-	personaName?: string;
-};
-
 type LedgerEntry = {
-	id: number;
-	entry_type: string;
-	funding_source: string;
-	amount: number;
-	balance_after: number;
-	reason: string;
-	request_id: string;
-	created_at: number;
+  id: number;
+  entry_type: string;
+  funding_source: string;
+  amount: number;
+  balance_after: number;
+  reason: string;
+  request_id: string;
+  created_at: number;
 };
 
 type ApiKeyItem = {
-	id: number;
-	name: string;
-	key: string;
-	status: number;
-	model_limits_enabled: boolean;
-	model_limits: string;
-	remain_quota: number;
-	unlimited_quota: boolean;
-	expired_time: number;
-	created_time: number;
+  id: number;
+  name: string;
+  key: string;
+  status: number;
+  model_limits_enabled: boolean;
+  model_limits: string;
+  remain_quota: number;
+  unlimited_quota: boolean;
+  expired_time: number;
+  created_time: number;
 };
+
+type DetailState =
+  | { open: false; persona?: undefined; mode?: never }
+  | { open: true; persona?: Persona; mode: "view" | "edit" | "create" };
 
 function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
   return { id: crypto.randomUUID(), role, content };
@@ -71,28 +72,30 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-	const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
-	const [conversationId, setConversationId] = useState<string | null>(null);
-	const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-	const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
-	const [ledgerTotal, setLedgerTotal] = useState(0);
-	const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
-	const [quotaResult, setQuotaResult] = useState("");
-	const [quotaError, setQuotaError] = useState("");
-	const [keys, setKeys] = useState<ApiKeyItem[]>([]);
-	const [keyForm, setKeyForm] = useState({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
-	const [createdKey, setCreatedKey] = useState("");
-	const [keysError, setKeysError] = useState("");
-	const [toolsOpen, setToolsOpen] = useState(false);
-	const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota">("ledger");
-	const [sidebarOpen, setSidebarOpen] = useState(false);
-	const [activeMode, setActiveMode] = useState<"chat" | "roleplay">("chat");
-	const [activePersona, setActivePersona] = useState<Persona | undefined>();
-	const [personas, setPersonas] = useState<Persona[]>([]);
-	const [setupOpen, setSetupOpen] = useState(false);
-	const abortRef = useRef<AbortController | null>(null);
+  const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [view, setView] = useState<AppView>("home");
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [activePersona, setActivePersona] = useState<Persona | undefined>();
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [detail, setDetail] = useState<DetailState>({ open: false });
+  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [ledgerTotal, setLedgerTotal] = useState(0);
+  const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
+  const [quotaResult, setQuotaResult] = useState("");
+  const [quotaError, setQuotaError] = useState("");
+  const [keys, setKeys] = useState<ApiKeyItem[]>([]);
+  const [keyForm, setKeyForm] = useState({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
+  const [createdKey, setCreatedKey] = useState("");
+  const [keysError, setKeysError] = useState("");
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota">("ledger");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
-	async function loadBalance() {
+  async function loadBalance() {
     try {
       const response = await fetch("/api/me/balance", { cache: "no-store" });
       if (response.ok) {
@@ -111,227 +114,289 @@ export default function HomePage() {
       const body = await response.json();
       if (body.conversation?.id) {
         setConversationId(body.conversation.id);
+        setConversations((current) => [body.conversation, ...current]);
         return body.conversation.id;
       }
     } catch {}
     return null;
   }
 
-	async function loadConversations() {
-		try {
-			const list = await fetch("/api/chat/conversations", { cache: "no-store" }).then((response) => response.json());
-			const items = Array.isArray(list.conversations) ? list.conversations : [];
-			setConversations(items);
-			const latest = items[0];
-			if (latest?.id) {
-				setConversationId(latest.id);
-				const detail = await fetch(`/api/chat/conversations/${latest.id}`, { cache: "no-store" }).then((response) => response.json());
-				if (Array.isArray(detail.messages)) {
-					setMessages(detail.messages);
-					setActiveMode(detail.mode === "roleplay" ? "roleplay" : "chat");
-					setActivePersona(detail.persona ?? undefined);
-				}
-			} else {
-				await ensureConversation();
-			}
-		} catch {}
-	}
+  async function loadConversations() {
+    try {
+      const list = await fetch("/api/chat/conversations", { cache: "no-store" }).then((response) => response.json());
+      setConversations(Array.isArray(list.conversations) ? list.conversations : []);
+    } catch {}
+  }
 
-	async function loadPersonas() {
-		try {
-			const response = await fetch("/api/personas", { cache: "no-store" });
-			if (response.ok) {
-				const body = await response.json();
-				setPersonas(Array.isArray(body.personas) ? body.personas : []);
-			}
-		} catch {}
-	}
+  async function loadPersonas() {
+    try {
+      const response = await fetch("/api/personas", { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setPersonas(Array.isArray(body.personas) ? body.personas : []);
+      }
+    } catch {}
+  }
 
-	async function loadLedger() {
-		try {
-			const response = await fetch("/api/me/ledger?page=1&pageSize=20", { cache: "no-store" });
-			if (response.ok) {
-				const body = await response.json();
-				setLedgerEntries(Array.isArray(body.entries) ? body.entries : []);
-				setLedgerTotal(typeof body.total === "number" ? body.total : 0);
-			}
-		} catch {}
-	}
+  async function loadFavorites() {
+    try {
+      const response = await fetch("/api/preferences", { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setFavoriteIds(Array.isArray(body.preferences?.favoritePersonaIds) ? body.preferences.favoritePersonaIds : []);
+      }
+    } catch {}
+  }
 
-	async function submitQuota(event: FormEvent) {
-		event.preventDefault();
-		setQuotaResult("");
-		setQuotaError("");
-		const response = await fetch("/api/admin/quota", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				userId: Number(quotaForm.userId),
-				action: quotaForm.action,
-				amount: Number(quotaForm.amount),
-				reason: quotaForm.reason,
-				reference: quotaForm.reference,
-			}),
-		});
-		const body = await response.json().catch(() => null);
-		if (!response.ok || !body?.balanceAfter) {
-			setQuotaError(body?.error || "额度发放失败。");
-			return;
-		}
-		setQuotaResult(`发放成功，最新余额 ${body.balanceAfter}`);
-		setQuotaForm((current) => ({ ...current, userId: "", amount: "", reference: "" }));
-		void loadBalance();
-	}
+  async function loadLedger() {
+    try {
+      const response = await fetch("/api/me/ledger?page=1&pageSize=20", { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setLedgerEntries(Array.isArray(body.entries) ? body.entries : []);
+        setLedgerTotal(typeof body.total === "number" ? body.total : 0);
+      }
+    } catch {}
+  }
 
-	async function loadKeys() {
-		try {
-			const response = await fetch("/api/me/keys", { cache: "no-store" });
-			if (response.ok) {
-				const body = await response.json();
-				setKeys(Array.isArray(body.keys) ? body.keys : []);
-			}
-		} catch {}
-	}
+  async function loadKeys() {
+    try {
+      const response = await fetch("/api/me/keys", { cache: "no-store" });
+      if (response.ok) {
+        const body = await response.json();
+        setKeys(Array.isArray(body.keys) ? body.keys : []);
+      }
+    } catch {}
+  }
 
-	async function openTools(tab: "ledger" | "keys" | "quota") {
-		setToolsTab(tab);
-		setToolsOpen(true);
-		if (tab === "ledger") await loadLedger();
-		if (tab === "keys") await loadKeys();
-	}
+  async function openTools(tab: "ledger" | "keys" | "quota") {
+    setToolsTab(tab);
+    setToolsOpen(true);
+    if (tab === "ledger") await loadLedger();
+    if (tab === "keys") await loadKeys();
+  }
 
-	async function submitKey(event: FormEvent) {
-		event.preventDefault();
-		setKeysError("");
-		setCreatedKey("");
-		const response = await fetch("/api/me/keys", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				name: keyForm.name,
-				models: keyForm.models.join(","),
-				remainQuota: Number(keyForm.remainQuota),
-				expiredTime: Math.floor(Date.now() / 1000) + Number(keyForm.expiryDays) * 86400,
-			}),
-		});
-		const body = await response.json().catch(() => null);
-		if (!response.ok || !body?.key) {
-			setKeysError(body?.error || "Key 创建失败。");
-			return;
-		}
-		setCreatedKey(body.key);
-		setKeyForm({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
-		await loadKeys();
-	}
+  async function toggleFavorite(personaId: string) {
+    const next = favoriteIds.includes(personaId)
+      ? favoriteIds.filter((id) => id !== personaId)
+      : [...favoriteIds, personaId];
+    setFavoriteIds(next);
+    try {
+      await fetch("/api/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favoritePersonaIds: next }),
+      });
+    } catch {
+      setFavoriteIds((current) =>
+        current.includes(personaId) ? current.filter((id) => id !== personaId) : [...current, personaId],
+      );
+    }
+  }
 
-	async function deleteKey(id: number) {
-		if (!window.confirm("删除该 Key？使用它的请求将立即失效。")) return;
-		const response = await fetch(`/api/me/keys/${id}`, { method: "DELETE" });
-		if (response.ok) await loadKeys();
-	}
+  async function openConversation(id: string) {
+    if (!id) return;
+    abortRef.current?.abort();
+    setView("chat");
+    setError("");
+    const detailResponse = await fetch(`/api/chat/conversations/${id}`, { cache: "no-store" }).then((response) =>
+      response.json(),
+    );
+    if (!Array.isArray(detailResponse.messages)) return;
+    setConversationId(id);
+    setMessages(detailResponse.messages);
+    setActivePersona(detailResponse.persona ?? undefined);
+  }
 
-	async function openConversation(id: string) {
-		if (!id || id === conversationId) return;
-		abortRef.current?.abort();
-		const detail = await fetch(`/api/chat/conversations/${id}`, { cache: "no-store" }).then((response) => response.json());
-		if (Array.isArray(detail.messages)) {
-			setConversationId(id);
-			setMessages(detail.messages);
-			setActiveMode(detail.mode === "roleplay" ? "roleplay" : "chat");
-			setActivePersona(detail.persona ?? undefined);
-			setError("");
-		}
-	}
+  function navigate(nextView: AppView) {
+    setView(nextView);
+    if (nextView === "chat" && !conversationId) void ensureConversation();
+  }
 
-	function openNewConversationSetup() {
-		abortRef.current?.abort();
-		setSetupOpen(true);
-	}
+  function openNewConversationSetup() {
+    abortRef.current?.abort();
+    setSetupOpen(true);
+  }
 
-	async function startPlainConversation() {
-		const response = await fetch("/api/chat/conversations", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ mode: "chat" }),
-			cache: "no-store",
-		});
-		const body = await response.json().catch(() => null);
-		if (!response.ok || !body?.conversation?.id) {
-			throw new Error(body?.error || "创建会话失败。");
-		}
-		setConversationId(body.conversation.id);
-		setConversations((current) => [body.conversation, ...current]);
-		setMessages([]);
-		setActiveMode("chat");
-		setActivePersona(undefined);
-		setError("");
-		setSetupOpen(false);
-	}
+  async function startPlainConversation() {
+    const response = await fetch("/api/chat/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "chat" }),
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.conversation?.id) throw new Error(body?.error || "创建会话失败。");
+    setConversationId(body.conversation.id);
+    setConversations((current) => [body.conversation, ...current]);
+    setMessages([]);
+    setActivePersona(undefined);
+    setError("");
+    setSetupOpen(false);
+    setView("chat");
+  }
 
-	async function startRoleplayConversation(persona: Persona, saveToLibrary: boolean) {
-		let target = persona;
-		if (saveToLibrary) {
-			const response = await fetch("/api/personas", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ persona }),
-			});
-			const body = await response.json().catch(() => null);
-			if (!response.ok || !body?.persona?.id) {
-				throw new Error(body?.error || "保存角色失败。");
-			}
-			target = body.persona;
-			await loadPersonas();
-		}
-		const response = await fetch("/api/chat/conversations", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ mode: "roleplay", persona: target }),
-			cache: "no-store",
-		});
-		const body = await response.json().catch(() => null);
-		if (!response.ok || !body?.conversation?.id) {
-			throw new Error(body?.error || "创建会话失败。");
-		}
-		setConversationId(body.conversation.id);
-		setConversations((current) => [body.conversation, ...current]);
-		setMessages([]);
-		setActiveMode("roleplay");
-		setActivePersona(target);
-		setError("");
-		setSetupOpen(false);
-	}
+  async function startRoleplayConversation(persona: Persona, saveToLibrary: boolean) {
+    let target = persona;
+    if (saveToLibrary) {
+      const response = await fetch("/api/personas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ persona }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "保存角色失败。");
+      target = body.persona;
+      await loadPersonas();
+    }
+    const response = await fetch("/api/chat/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "roleplay", persona: target }),
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.conversation?.id) throw new Error(body?.error || "创建会话失败。");
+    setConversationId(body.conversation.id);
+    setConversations((current) => [body.conversation, ...current]);
+    setMessages([]);
+    setActivePersona(target);
+    setError("");
+    setSetupOpen(false);
+    setDetail({ open: false });
+    setView("chat");
+  }
 
-	async function deleteLibraryPersona(id: string) {
-		const response = await fetch(`/api/personas/${id}`, { method: "DELETE" });
-		if (!response.ok) {
-			const body = await response.json().catch(() => null);
-			throw new Error(body?.error || "删除角色失败。");
-		}
-		setPersonas((current) => current.filter((persona) => persona.id !== id));
-	}
+  async function switchToPlain() {
+    const recent = conversations.find(
+      (conversation) => conversation.mode === "chat" && !conversation.archived,
+    );
+    if (recent) {
+      await openConversation(recent.id);
+      return;
+    }
+    await startPlainConversation();
+  }
 
-	async function deleteConversationById(id: string) {
-		if (!window.confirm("删除该会话？此操作不可恢复。")) return;
-		await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
-		if (id === conversationId) {
-			setConversationId(null);
-			setMessages([]);
-		}
-		await loadConversations();
-	}
+  async function switchToPersona(persona: Persona) {
+    const recent = conversations.find(
+      (conversation) => conversation.personaId === persona.id && !conversation.archived,
+    );
+    if (recent) {
+      await openConversation(recent.id);
+      return;
+    }
+    await startRoleplayConversation(persona, false);
+  }
 
-	async function exportConversationById(id: string) {
-		const response = await fetch(`/api/chat/conversations/${id}/export`);
-		if (!response.ok) return;
-		const blob = await response.blob();
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement("a");
-		link.href = url;
-		link.download = `yanchuaner-ai-conversation-${id}.json`;
-		link.click();
-		URL.revokeObjectURL(url);
-	}
+  async function updateConversationMeta(id: string, patch: { title?: string; pinned?: boolean; archived?: boolean }) {
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.id === id
+          ? {
+              ...conversation,
+              title: patch.title?.trim() || conversation.title,
+              pinned: patch.pinned ?? conversation.pinned,
+              archived: patch.archived ?? conversation.archived,
+            }
+          : conversation,
+      ),
+    );
+    const response = await fetch(`/api/chat/conversations/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!response.ok) await loadConversations();
+  }
+
+  async function deleteConversationById(id: string) {
+    if (!window.confirm("删除该会话？此操作不可恢复。")) return;
+    await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+    if (id === conversationId) {
+      setConversationId(null);
+      setMessages([]);
+      setActivePersona(undefined);
+    }
+    await loadConversations();
+  }
+
+  async function exportConversationById(id: string) {
+    const response = await fetch(`/api/chat/conversations/${id}/export`);
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `yanchuaner-ai-conversation-${id}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function openPersonaDetail(persona: Persona, mode: "view" | "edit" | "create" = "view") {
+    setDetail({ open: true, persona, mode });
+  }
+
+  async function savePersonaEdit(id: string, input: PersonaInput) {
+    const response = await fetch(`/api/personas/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persona: input }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "保存角色失败。");
+    setPersonas((current) => current.map((persona) => (persona.id === id ? body.persona : persona)));
+    setDetail({ open: true, persona: body.persona, mode: "view" });
+  }
+
+  async function createLibraryPersona(input: PersonaInput): Promise<Persona> {
+    const response = await fetch("/api/personas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persona: input }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "创建角色失败。");
+    setPersonas((current) => [...current, body.persona]);
+    return body.persona;
+  }
+
+  async function duplicatePersona(persona: Persona) {
+    const response = await fetch("/api/personas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        persona: {
+          name: `${persona.name}（副本）`.slice(0, 32),
+          avatar: persona.avatar,
+          cover: persona.cover,
+          description: persona.description,
+          firstMessage: persona.firstMessage,
+          style: persona.style,
+          world: persona.world,
+          scenario: persona.scenario,
+          plot: persona.plot,
+          examples: persona.examples,
+          tags: persona.tags,
+        },
+      }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "复制角色失败。");
+    setPersonas((current) => [...current, body.persona]);
+    setDetail({ open: true, persona: body.persona, mode: "view" });
+  }
+
+  async function deleteLibraryPersona(id: string) {
+    if (!window.confirm("删除这个角色？已经开始的会话不受影响。")) return;
+    const response = await fetch(`/api/personas/${id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || "删除角色失败。");
+    }
+    setPersonas((current) => current.filter((persona) => persona.id !== id));
+    setDetail({ open: false });
+  }
 
   useEffect(() => {
     fetch("/api/session", { cache: "no-store" })
@@ -346,10 +411,11 @@ export default function HomePage() {
           sessionQuotaUnits: body.sessionQuotaUnits,
           expiresAt: body.expiresAt,
         });
-		setModel(body.models[0] ?? "");
-		void loadBalance();
-		void loadConversations();
-		void loadPersonas();
+        setModel(body.models[0] ?? "");
+        void loadBalance();
+        void loadConversations();
+        void loadPersonas();
+        void loadFavorites();
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
@@ -359,16 +425,21 @@ export default function HomePage() {
     await fetch("/api/auth/logout", { method: "POST" });
     setSession({ status: "anonymous" });
     setMessages([]);
+    setConversationId(null);
+    setView("home");
   }
 
   function appendAssistantContent(id: string, content: string) {
-    setMessages((current) => current.map((message) => (message.id === id ? { ...message, content: message.content + content } : message)));
+    setMessages((current) =>
+      current.map((message) => (message.id === id ? { ...message, content: message.content + content } : message)),
+    );
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit() {
     const content = prompt.trim();
     if (!content || pending || session.status !== "authenticated" || !model) return;
+    const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
+    const activeMode = activeConversation?.mode ?? "chat";
     const userMessage = newMessage("user", content);
     const assistantMessage = newMessage("assistant", "");
     const targetConversationId = await ensureConversation();
@@ -477,26 +548,62 @@ export default function HomePage() {
         }),
       });
       await loadBalance();
+      await loadConversations();
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "模型请求失败。");
-      setMessages((current) => current.filter((message) => message.id !== assistantMessage.id || message.content.length > 0));
+      setMessages((current) =>
+        current.filter((message) => message.id !== assistantMessage.id || message.content.length > 0),
+      );
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setPending(false);
     }
   }
 
+  const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
+  const activeMode = activeConversation?.mode ?? "chat";
+
+  const recentPersonaIds = conversations
+    .filter((conversation) => conversation.mode === "roleplay" && !conversation.archived && conversation.personaId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .map((conversation) => conversation.personaId as string);
+  const quickPersonas = [...new Set([...recentPersonaIds, ...favoriteIds])]
+    .map((id) => [...personas, ...PRESET_PERSONAS].find((persona) => persona.id === id))
+    .filter((persona): persona is Persona => Boolean(persona))
+    .slice(0, 7);
+
+  const detailPersona = detail.open ? detail.persona : undefined;
+  const detailRecent = detailPersona
+    ? conversations.filter((conversation) => conversation.personaId === detailPersona.id && !conversation.archived)
+    : [];
+
   return (
     <main className={session.status === "authenticated" ? "app-shell" : "access-shell"}>
       <header className="topbar">
+        {session.status === "authenticated" && (
+          <button
+            className="sidebar-toggle topbar-toggle"
+            type="button"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="打开导航"
+          >
+            <PanelLeft size={18} aria-hidden="true" />
+          </button>
+        )}
         <a className="brand" href="/" aria-label="燕中 AI 首页">
-          <span className="brand-mark"><Sparkles size={18} aria-hidden="true" /></span>
+          <span className="brand-mark">
+            <Sparkles size={18} aria-hidden="true" />
+          </span>
           <span>燕中 AI</span>
         </a>
         <span className="phase">内部预览</span>
       </header>
 
-      {session.status === "loading" && <div className="status-line" aria-live="polite">正在确认访问状态</div>}
+      {session.status === "loading" && (
+        <div className="status-line" aria-live="polite">
+          正在确认访问状态
+        </div>
+      )}
 
       {session.status === "anonymous" && (
         <section className="access-view">
@@ -521,7 +628,10 @@ export default function HomePage() {
       {session.status === "authenticated" && (
         <div className="workspace-grid">
           <ConversationSidebar
+            view={view}
+            onNavigate={navigate}
             conversations={conversations}
+            personas={personas}
             activeId={conversationId}
             open={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
@@ -533,273 +643,382 @@ export default function HomePage() {
               openNewConversationSetup();
               setSidebarOpen(false);
             }}
-            onDelete={(id) => {
-              void deleteConversationById(id);
-            }}
-            onExport={(id) => {
-              void exportConversationById(id);
-            }}
+            onDelete={(id) => void deleteConversationById(id)}
+            onExport={(id) => void exportConversationById(id)}
+            onUpdate={(id, patch) => void updateConversationMeta(id, patch)}
           />
-          <section className="chat-workspace">
-          <div className="chat-toolbar">
-            <div className="identity">
-              <button className="sidebar-toggle" type="button" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="会话列表">
-                <PanelLeft size={18} aria-hidden="true" />
-              </button>
-              <span className="avatar"><User size={17} aria-hidden="true" /></span>
-              <span><strong>{session.identity.name}</strong><small>#{session.subject.userId}</small></span>
-            </div>
-				<div className="toolbar-filters">
-					{activePersona && (
-						<span className="persona-chip" title={`当前角色：${activePersona.name}`}>
-							{activePersona.avatar || "🎭"} {activePersona.name}
-						</span>
-					)}
-					<span className="balance" title="公益额度（单位）">
-						<small>公益额度</small>
-						<strong>{balanceUnits === null ? "—" : balanceUnits}</strong>
-					</span>
-					<label className="model-picker">
-						<span>模型</span>
-						<select value={model} onChange={(event) => setModel(event.target.value)} disabled={pending}>
-							{session.models.map((item) => <option value={item} key={item}>{item}</option>)}
-						</select>
-					</label>
-				</div>
-				<div className="toolbar-actions">
-					<button className="icon-action" type="button" onClick={() => openTools("ledger")} title="额度与 Key" aria-label="额度与 Key">
-						<SlidersHorizontal size={17} aria-hidden="true" />
-					</button>
-					<button className="icon-action" type="button" onClick={() => conversationId && exportConversationById(conversationId)} title="导出会话" aria-label="导出会话">
-						<Download size={17} aria-hidden="true" />
-					</button>
-					<button className="icon-action" type="button" onClick={() => conversationId && deleteConversationById(conversationId)} title="删除会话" aria-label="删除会话">
-						<Trash2 size={17} aria-hidden="true" />
-					</button>
-					<button className="icon-action" type="button" onClick={openNewConversationSetup} title="新对话" aria-label="新对话">
-						<Plus size={18} aria-hidden="true" />
-					</button>
-					<button className="icon-action" type="button" onClick={logout} title="退出登录" aria-label="退出登录">
-						<LogOut size={18} aria-hidden="true" />
-					</button>
-				</div>
-			</div>
 
-			<Drawer open={toolsOpen} title="额度与 Key" onClose={() => setToolsOpen(false)}>
-				<div className="tools-tabs" role="tablist" aria-label="额度与 Key">
-					<button className={toolsTab === "ledger" ? "tools-tab active" : "tools-tab"} type="button" onClick={() => openTools("ledger")}>
-						<ReceiptText size={15} aria-hidden="true" /> 流水
-					</button>
-					<button className={toolsTab === "keys" ? "tools-tab active" : "tools-tab"} type="button" onClick={() => openTools("keys")}>
-						<KeyRound size={15} aria-hidden="true" /> API Key
-					</button>
-					{session.identity.role === "admin" && (
-						<button className={toolsTab === "quota" ? "tools-tab active" : "tools-tab"} type="button" onClick={() => openTools("quota")}>
-							<Coins size={15} aria-hidden="true" /> 额度发放
-						</button>
-					)}
-				</div>
-
-				{toolsTab === "ledger" && (
-					<section className="tool-section" aria-live="polite">
-						<h2>额度流水（{ledgerTotal}）</h2>
-						{ledgerEntries.length === 0 ? (
-							<p className="status-line">暂无流水记录</p>
-						) : (
-							<ul className="ledger-list">
-								{ledgerEntries.map((entry) => (
-									<li className="ledger-item" key={entry.id}>
-										<span className="ledger-amount">{entry.amount > 0 ? `+${entry.amount}` : entry.amount}</span>
-										<span className="ledger-copy">
-											<strong>{entry.entry_type} · {entry.funding_source}</strong>
-											<small>{entry.reason || "—"}</small>
-											<small>{entry.request_id ? `request ${entry.request_id}` : ""} · {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}</small>
-										</span>
-									</li>
-								))}
-							</ul>
-						)}
-					</section>
-				)}
-
-				{toolsTab === "keys" && (
-					<section className="tool-section" aria-live="polite">
-						<h2>个人 API Key</h2>
-						<form className="quota-form" onSubmit={submitKey}>
-							<label>
-								<span>名称</span>
-								<input type="text" maxLength={50} value={keyForm.name} onChange={(event) => setKeyForm({ ...keyForm, name: event.target.value })} required />
-							</label>
-							<label>
-								<span>预算（额度单位）</span>
-								<input type="number" min="1" value={keyForm.remainQuota} onChange={(event) => setKeyForm({ ...keyForm, remainQuota: event.target.value })} required />
-							</label>
-							<label>
-								<span>有效期</span>
-								<select value={keyForm.expiryDays} onChange={(event) => setKeyForm({ ...keyForm, expiryDays: event.target.value })}>
-									<option value="7">7 天</option>
-									<option value="30">30 天</option>
-									<option value="90">90 天</option>
-								</select>
-							</label>
-							<label>
-								<span>模型</span>
-								<div className="model-checks">
-									{session.models.map((item) => (
-										<label key={item} className="model-check">
-											<input
-												type="checkbox"
-												checked={keyForm.models.includes(item)}
-												onChange={(event) =>
-													setKeyForm((current) => ({
-														...current,
-														models: event.target.checked
-															? [...current.models, item]
-															: current.models.filter((model) => model !== item),
-													}))
-												}
-											/>
-											<span>{item}</span>
-										</label>
-									))}
-								</div>
-							</label>
-							<button className="primary-action" type="submit">创建 Key</button>
-						</form>
-						{createdKey && (
-							<div className="one-time-key">
-								<strong>请立即保存，只显示一次：</strong>
-								<code>{createdKey}</code>
-							</div>
-						)}
-						{keysError && <p className="request-error" role="alert">{keysError}</p>}
-						<ul className="ledger-list">
-							{keys.map((item) => (
-								<li className="ledger-item" key={item.id}>
-									<span className="ledger-amount">{item.status === 1 ? "启用" : "停用"}</span>
-									<span className="ledger-copy">
-										<strong>{item.name || "未命名"} · {item.key}</strong>
-										<small>{item.model_limits || "全部模型"} · 剩余 {item.remain_quota}</small>
-										<small>有效期至 {new Date(item.expired_time * 1000).toLocaleString("zh-CN")}</small>
-									</span>
-									<button className="icon-action" type="button" onClick={() => deleteKey(item.id)} aria-label="删除 Key">
-										<Trash2 size={16} aria-hidden="true" />
-									</button>
-								</li>
-							))}
-						</ul>
-					</section>
-				)}
-
-				{toolsTab === "quota" && session.identity.role === "admin" && (
-					<section className="tool-section" aria-live="polite">
-						<h2>公益额度发放</h2>
-						<form className="quota-form" onSubmit={submitQuota}>
-							<label>
-								<span>目标用户 ID</span>
-								<input type="number" min="1" value={quotaForm.userId} onChange={(event) => setQuotaForm({ ...quotaForm, userId: event.target.value })} required />
-							</label>
-							<label>
-								<span>操作</span>
-								<select value={quotaForm.action} onChange={(event) => setQuotaForm({ ...quotaForm, action: event.target.value })}>
-									<option value="grant">发放（只允许正数）</option>
-									<option value="adjust">调整（可回退）</option>
-								</select>
-							</label>
-							<label>
-								<span>金额（额度单位）</span>
-								<input type="number" value={quotaForm.amount} onChange={(event) => setQuotaForm({ ...quotaForm, amount: event.target.value })} required />
-							</label>
-							<label>
-								<span>原因</span>
-								<input type="text" maxLength={200} value={quotaForm.reason} onChange={(event) => setQuotaForm({ ...quotaForm, reason: event.target.value })} required />
-							</label>
-							<label>
-								<span>线下收款凭证</span>
-								<input type="text" maxLength={128} value={quotaForm.reference} onChange={(event) => setQuotaForm({ ...quotaForm, reference: event.target.value })} required />
-							</label>
-							<button className="primary-action" type="submit">确认发放</button>
-						</form>
-						{quotaError && <p className="request-error" role="alert">{quotaError}</p>}
-						{quotaResult && <p className="quota-success">{quotaResult}</p>}
-					</section>
-				)}
-			</Drawer>
-
-			<PersonaSetup
-				open={setupOpen}
-				presets={PRESET_PERSONAS}
-				library={personas}
-				onClose={() => setSetupOpen(false)}
-				onStartChat={startPlainConversation}
-				onStartRoleplay={startRoleplayConversation}
-				onDeletePersona={deleteLibraryPersona}
-			/>
-
-			<div className="conversation" aria-live="polite">
-            {activePersona?.firstMessage?.trim() ? (
-              <article className="message assistant">
-                <span className="message-icon"><Bot size={17} /></span>
-                <div>{activePersona.firstMessage}</div>
-              </article>
-            ) : null}
-            {messages.length === 0 && !activePersona && (
-              <div className="empty-state">
-                <span><Bot size={24} aria-hidden="true" /></span>
-                <h1>新对话</h1>
-                <p>{model}</p>
-                <button className="ghost-action" type="button" onClick={openNewConversationSetup}>
-                  <Theater size={16} aria-hidden="true" /> 开始角色扮演
-                </button>
-              </div>
-            )}
-            {messages.map((message) => (
-              <article className={`message ${message.role}`} key={message.id}>
-                <span className="message-icon">{message.role === "user" ? <User size={17} /> : <Bot size={17} />}</span>
-                <div>
-                  {message.content || <span className="thinking">正在生成</span>}
-                  {message.role === "assistant" && (message.requestId || message.usage) && (
-                    <small className="message-meta">
-                      {message.requestId ? `request ${message.requestId}` : ""}
-                      {message.usage ? ` · 输入 ${message.usage.prompt} / 输出 ${message.usage.completion}` : ""}
-                    </small>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <div className="composer-wrap">
-            {error && <p className="request-error" role="alert">{error}</p>}
-            <form className="composer" onSubmit={submit}>
-              <textarea
-                aria-label="消息"
-                placeholder="输入消息"
-                rows={2}
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    event.currentTarget.form?.requestSubmit();
-                  }
-                }}
-                disabled={pending}
+          <section className="main-panel">
+            {view === "home" && (
+              <HomeView
+                identityName={session.identity.name}
+                balanceUnits={balanceUnits}
+                model={model}
+                recentConversations={conversations.filter((conversation) => !conversation.archived)}
+                presets={PRESET_PERSONAS}
+                library={personas}
+                favoriteIds={favoriteIds}
+                onOpenConversation={(id) => void openConversation(id)}
+                onOpenChat={() => navigate("chat")}
+                onNewChat={openNewConversationSetup}
+                onOpenLibrary={() => navigate("personas")}
+                onOpenTools={() => openTools("ledger")}
+                onOpenPersona={(persona) => openPersonaDetail(persona)}
               />
-              {pending ? (
-                <button className="send-action stop" type="button" onClick={() => abortRef.current?.abort()} title="停止生成" aria-label="停止生成">
-                  <Square size={17} fill="currentColor" />
-                </button>
-              ) : (
-                <button className="send-action" type="submit" disabled={!prompt.trim() || !model} title="发送" aria-label="发送">
-                  <Send size={18} />
-                </button>
-              )}
-            </form>
-          </div>
+            )}
+
+            {view === "personas" && (
+              <PersonaLibrary
+                presets={PRESET_PERSONAS}
+                library={personas}
+                favoriteIds={favoriteIds}
+                onOpenDetail={(persona) => openPersonaDetail(persona)}
+                onNewPersona={() => setDetail({ open: true, mode: "create" })}
+              />
+            )}
+
+            {view === "chat" && (
+              <ChatStage
+                conversationTitle={activeConversation?.title || "未命名会话"}
+                onChangeTitle={(title) => conversationId && void updateConversationMeta(conversationId, { title })}
+                activeMode={activeMode}
+                activePersona={activePersona}
+                onOpenPersonaDetail={() => activePersona && openPersonaDetail(activePersona)}
+                messages={messages}
+                quickPersonas={quickPersonas}
+                onQuickSwitch={(persona) => {
+                  abortRef.current?.abort();
+                  if (persona) void switchToPersona(persona);
+                  else void switchToPlain();
+                }}
+                model={model}
+                models={session.models}
+                onModelChange={setModel}
+                balanceUnits={balanceUnits}
+                pending={pending}
+                error={error}
+                prompt={prompt}
+                onPromptChange={setPrompt}
+                onSubmit={() => void submit()}
+                onStop={() => abortRef.current?.abort()}
+                onExport={() => conversationId && void exportConversationById(conversationId)}
+                onDelete={() => conversationId && void deleteConversationById(conversationId)}
+                onNewChat={openNewConversationSetup}
+                onLogout={() => void logout()}
+                onOpenTools={() => openTools("ledger")}
+              />
+            )}
           </section>
         </div>
       )}
+
+      <Drawer open={toolsOpen} title="额度与 Key" onClose={() => setToolsOpen(false)}>
+        <div className="tools-tabs" role="tablist" aria-label="额度与 Key">
+          <button
+            className={toolsTab === "ledger" ? "tools-tab active" : "tools-tab"}
+            type="button"
+            onClick={() => openTools("ledger")}
+          >
+            <ReceiptText size={15} aria-hidden="true" /> 流水
+          </button>
+          <button
+            className={toolsTab === "keys" ? "tools-tab active" : "tools-tab"}
+            type="button"
+            onClick={() => openTools("keys")}
+          >
+            <KeyRound size={15} aria-hidden="true" /> API Key
+          </button>
+          {session.status === "authenticated" && session.identity.role === "admin" && (
+            <button
+              className={toolsTab === "quota" ? "tools-tab active" : "tools-tab"}
+              type="button"
+              onClick={() => openTools("quota")}
+            >
+              <Coins size={15} aria-hidden="true" /> 额度发放
+            </button>
+          )}
+        </div>
+
+        {toolsTab === "ledger" && (
+          <section className="tool-section" aria-live="polite">
+            <h2>额度流水（{ledgerTotal}）</h2>
+            {ledgerEntries.length === 0 ? (
+              <p className="status-line">暂无流水记录</p>
+            ) : (
+              <ul className="ledger-list">
+                {ledgerEntries.map((entry) => (
+                  <li className="ledger-item" key={entry.id}>
+                    <span className="ledger-amount">{entry.amount > 0 ? `+${entry.amount}` : entry.amount}</span>
+                    <span className="ledger-copy">
+                      <strong>
+                        {entry.entry_type} · {entry.funding_source}
+                      </strong>
+                      <small>{entry.reason || "—"}</small>
+                      <small>
+                        {entry.request_id ? `request ${entry.request_id}` : ""} ·{" "}
+                        {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}
+                      </small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {toolsTab === "keys" && (
+          <section className="tool-section" aria-live="polite">
+            <h2>个人 API Key</h2>
+            <form className="quota-form" onSubmit={submitKey}>
+              <label>
+                <span>名称</span>
+                <input
+                  type="text"
+                  maxLength={50}
+                  value={keyForm.name}
+                  onChange={(event) => setKeyForm({ ...keyForm, name: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                <span>预算（额度单位）</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={keyForm.remainQuota}
+                  onChange={(event) => setKeyForm({ ...keyForm, remainQuota: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                <span>有效期</span>
+                <select
+                  value={keyForm.expiryDays}
+                  onChange={(event) => setKeyForm({ ...keyForm, expiryDays: event.target.value })}
+                >
+                  <option value="7">7 天</option>
+                  <option value="30">30 天</option>
+                  <option value="90">90 天</option>
+                </select>
+              </label>
+              <label>
+                <span>模型</span>
+                <div className="model-checks">
+                  {session.status === "authenticated" &&
+                    session.models.map((item) => (
+                      <label key={item} className="model-check">
+                        <input
+                          type="checkbox"
+                          checked={keyForm.models.includes(item)}
+                          onChange={(event) =>
+                            setKeyForm((current) => ({
+                              ...current,
+                              models: event.target.checked
+                                ? [...current.models, item]
+                                : current.models.filter((currentModel) => currentModel !== item),
+                            }))
+                          }
+                        />
+                        <span>{item}</span>
+                      </label>
+                    ))}
+                </div>
+              </label>
+              <button className="primary-action" type="submit">
+                创建 Key
+              </button>
+            </form>
+            {createdKey && (
+              <div className="one-time-key">
+                <strong>请立即保存，只显示一次：</strong>
+                <code>{createdKey}</code>
+              </div>
+            )}
+            {keysError && (
+              <p className="request-error" role="alert">
+                {keysError}
+              </p>
+            )}
+            <ul className="ledger-list">
+              {keys.map((item) => (
+                <li className="ledger-item" key={item.id}>
+                  <span className="ledger-amount">{item.status === 1 ? "启用" : "停用"}</span>
+                  <span className="ledger-copy">
+                    <strong>
+                      {item.name || "未命名"} · {item.key}
+                    </strong>
+                    <small>
+                      {item.model_limits || "全部模型"} · 剩余 {item.remain_quota}
+                    </small>
+                    <small>有效期至 {new Date(item.expired_time * 1000).toLocaleString("zh-CN")}</small>
+                  </span>
+                  <button className="icon-action danger" type="button" onClick={() => deleteKey(item.id)} aria-label="删除 Key">
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {toolsTab === "quota" && session.status === "authenticated" && session.identity.role === "admin" && (
+          <section className="tool-section" aria-live="polite">
+            <h2>公益额度发放</h2>
+            <form className="quota-form" onSubmit={submitQuota}>
+              <label>
+                <span>目标用户 ID</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={quotaForm.userId}
+                  onChange={(event) => setQuotaForm({ ...quotaForm, userId: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                <span>操作</span>
+                <select
+                  value={quotaForm.action}
+                  onChange={(event) => setQuotaForm({ ...quotaForm, action: event.target.value })}
+                >
+                  <option value="grant">发放（只允许正数）</option>
+                  <option value="adjust">调整（可回退）</option>
+                </select>
+              </label>
+              <label>
+                <span>金额（额度单位）</span>
+                <input
+                  type="number"
+                  value={quotaForm.amount}
+                  onChange={(event) => setQuotaForm({ ...quotaForm, amount: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                <span>原因</span>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={quotaForm.reason}
+                  onChange={(event) => setQuotaForm({ ...quotaForm, reason: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                <span>线下收款凭证</span>
+                <input
+                  type="text"
+                  maxLength={128}
+                  value={quotaForm.reference}
+                  onChange={(event) => setQuotaForm({ ...quotaForm, reference: event.target.value })}
+                  required
+                />
+              </label>
+              <button className="primary-action" type="submit">
+                确认发放
+              </button>
+            </form>
+            {quotaError && (
+              <p className="request-error" role="alert">
+                {quotaError}
+              </p>
+            )}
+            {quotaResult && <p className="quota-success">{quotaResult}</p>}
+          </section>
+        )}
+      </Drawer>
+
+      <PersonaSetup
+        open={setupOpen}
+        presets={PRESET_PERSONAS}
+        library={personas}
+        onClose={() => setSetupOpen(false)}
+        onStartChat={startPlainConversation}
+        onStartRoleplay={startRoleplayConversation}
+        onDeletePersona={deleteLibraryPersona}
+      />
+
+      {detail.open && (
+        <PersonaDetail
+          persona={detailPersona}
+          mode={detail.mode}
+          favorite={detailPersona ? favoriteIds.includes(detailPersona.id) : false}
+          recentConversations={detailRecent}
+          onClose={() => setDetail({ open: false })}
+          onStart={(persona) => void startRoleplayConversation(persona, false)}
+          onContinue={(id) => {
+            setDetail({ open: false });
+            void openConversation(id);
+          }}
+          onToggleFavorite={() => detailPersona && void toggleFavorite(detailPersona.id)}
+          onEdit={() => detailPersona && setDetail({ open: true, persona: detailPersona, mode: "edit" })}
+          onSave={async (input) => {
+            if (detailPersona) await savePersonaEdit(detailPersona.id, input);
+          }}
+          onCreate={async (input) => {
+            const persona = await createLibraryPersona(input);
+            setDetail({ open: true, persona, mode: "view" });
+          }}
+          onDelete={() => detailPersona && void deleteLibraryPersona(detailPersona.id)}
+          onDuplicate={() => detailPersona && void duplicatePersona(detailPersona)}
+        />
+      )}
+
     </main>
   );
+
+  async function submitKey(event: FormEvent) {
+    event.preventDefault();
+    setKeysError("");
+    setCreatedKey("");
+    const response = await fetch("/api/me/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: keyForm.name,
+        models: keyForm.models.join(","),
+        remainQuota: Number(keyForm.remainQuota),
+        expiredTime: Math.floor(Date.now() / 1000) + Number(keyForm.expiryDays) * 86400,
+      }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.key) {
+      setKeysError(body?.error || "Key 创建失败。");
+      return;
+    }
+    setCreatedKey(body.key);
+    setKeyForm({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
+    await loadKeys();
+  }
+
+  async function deleteKey(id: number) {
+    if (!window.confirm("删除该 Key？使用它的请求将立即失效。")) return;
+    const response = await fetch(`/api/me/keys/${id}`, { method: "DELETE" });
+    if (response.ok) await loadKeys();
+  }
+
+  async function submitQuota(event: FormEvent) {
+    event.preventDefault();
+    setQuotaResult("");
+    setQuotaError("");
+    const response = await fetch("/api/admin/quota", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: Number(quotaForm.userId),
+        action: quotaForm.action,
+        amount: Number(quotaForm.amount),
+        reason: quotaForm.reason,
+        reference: quotaForm.reference,
+      }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.balanceAfter) {
+      setQuotaError(body?.error || "额度发放失败。");
+      return;
+    }
+    setQuotaResult(`发放成功，最新余额 ${body.balanceAfter}`);
+    setQuotaForm((current) => ({ ...current, userId: "", amount: "", reference: "" }));
+    void loadBalance();
+  }
 }
