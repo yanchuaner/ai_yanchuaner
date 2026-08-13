@@ -308,7 +308,7 @@ test("chat route schedules group speakers then streams each member independently
     assert.match(scheduleBody.messages[0].content, /调度器/);
     assert.match(scheduleBody.messages[0].content, /星河旅者/);
     assert.match(scheduleBody.messages[0].content, /燕中学伴/);
-    assert.match(scheduleBody.messages[0].content, /主持人不发言/);
+    assert.match(scheduleBody.messages[0].content, /主持人绝不发言/);
 
     const speakerResponses: Response[] = [];
     for (const speaker of [first, second]) {
@@ -405,5 +405,64 @@ test("group speaker names fall back to a member when the scheduler output is inv
     const body = (await response.json()) as { speakers: { id: string }[] };
     assert.ok(body.speakers.length >= 1 && body.speakers.length <= 2);
     assert.ok(body.speakers.every((speaker) => [first.id, second.id].includes(speaker.id)));
+  });
+});
+
+test("group scheduler never picks the director even when it is also in the cast", async () => {
+  await withDataDir(async () => {
+    const traveler = {
+      id: "preset-star-traveler",
+      name: "星河旅者",
+      description: "星海旅者",
+      firstMessage: "欢迎",
+    };
+    const elder = {
+      id: "preset-elder",
+      name: "长者",
+      description: "温和的长者",
+      firstMessage: "开始",
+    };
+    const conversation = await createConversation(7, {
+      mode: "group",
+      cast: [traveler, elder],
+      director: elder,
+    });
+    const fetcher: typeof fetch = async (_input, init) => {
+      const url = String(_input);
+      if (url.endsWith("/v1/embeddings")) {
+        return Response.json({
+          object: "list",
+          model: "BAAI/bge-m3",
+          data: [{ object: "embedding", index: 0, embedding: [1, 0, 0] }],
+          usage: { prompt_tokens: 3, total_tokens: 3 },
+        });
+      }
+      const parsed = JSON.parse(String(init?.body)) as { stream?: boolean };
+      if (parsed.stream === false) {
+        return Response.json({
+          choices: [{ message: { content: '{"speakers":["长者","星河旅者"]}' } }],
+        });
+      }
+      return new Response("data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
+    };
+    const response = await handleChatCompletion(
+      authenticatedRequest(
+        "/api/chat/completions",
+        {
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: "旅者你多大了？" }],
+          knowledge: true,
+          conversationId: conversation.id,
+          groupSchedule: true,
+        },
+        "https://ai.example.test",
+        ["deepseek-chat", "BAAI/bge-m3"],
+      ),
+      config,
+      fetcher,
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { speakers: { id: string; name: string }[] };
+    assert.deepEqual(body.speakers, [{ id: traveler.id, name: traveler.name }]);
   });
 });

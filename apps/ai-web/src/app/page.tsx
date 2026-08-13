@@ -21,6 +21,7 @@ import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
 import { UserKnowledgeDrawer } from "@/components/user-knowledge";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
+import { createSpeakerPrefixStripper } from "@/lib/group-speech";
 import type {
   AppView,
   ChatMessage,
@@ -1095,6 +1096,7 @@ export default function HomePage() {
         const messageId = messageIdBySpeaker.get(speaker.id) as string;
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        const prefixStripper = createSpeakerPrefixStripper(speaker.name);
         let buffer = "";
         let content = "";
         let usage: { prompt_tokens?: number; completion_tokens?: number } | null = null;
@@ -1113,12 +1115,15 @@ export default function HomePage() {
               if (chunk?.usage) usage = chunk.usage;
               const delta = chunk?.choices?.[0]?.delta?.content;
               if (typeof delta === "string" && delta.length > 0) {
-                content += delta;
-                setMessages((current) =>
-                  current.map((message) =>
-                    message.id === messageId ? { ...message, content: message.content + delta } : message,
-                  ),
-                );
+                const cleaned = prefixStripper.push(delta);
+                if (cleaned) {
+                  content += cleaned;
+                  setMessages((current) =>
+                    current.map((message) =>
+                      message.id === messageId ? { ...message, content: message.content + cleaned } : message,
+                    ),
+                  );
+                }
               }
             }
           }

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     }
     if (candidate.director !== undefined) {
       if (!isValidPersona(candidate.director)) {
-        return NextResponse.json({ error: "导演设定无效。" }, { status: 400 });
+        return NextResponse.json({ error: "主持人设定无效。" }, { status: 400 });
       }
       director = candidate.director;
     }
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
             : message === "cast is invalid"
               ? "群聊成员无效，请选择 2 到 4 个不同角色。"
               : message === "director is invalid"
-                ? "导演设定无效。"
+                ? "主持人设定无效。"
                 : "创建会话失败。",
       },
       { status: 400 },

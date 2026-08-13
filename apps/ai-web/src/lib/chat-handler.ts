@@ -190,10 +190,13 @@ async function handleGroupSchedule(
           | null
           | undefined)
       : null;
+  // 主持人只营造场景，即使同时出现在成员列表里也不得发言。
+  const excluded = detail.director ? new Set([detail.director.id]) : new Set<string>();
+  const candidates = cast.filter((persona) => !excluded.has(persona.id));
   const speakers = schedulerBody
-    ? parseSpeakerNames(schedulerBody.choices?.[0]?.message?.content, cast)
+    ? parseSpeakerNames(schedulerBody.choices?.[0]?.message?.content, candidates)
     : [];
-  const selectedSpeakers = speakers.length > 0 ? speakers.slice(0, 2) : pickFallbackSpeakers(cast);
+  const selectedSpeakers = speakers.length > 0 ? speakers.slice(0, 2) : pickFallbackSpeakers(candidates);
   return NextResponse.json({
     speakers: selectedSpeakers.map((persona) => ({ id: persona.id, name: persona.name })),
   });
@@ -299,7 +302,8 @@ function buildSchedulerPrompt(cast: Persona[], director?: Persona): string {
     "根据用户消息和剧情需要，选择 1 到 2 位最合适的成员发言：",
     "- 只有一位成员适合回应时，只选 1 位；",
     "- 多位成员都在场且都能自然回应时，最多选 2 位；",
-    "- 不要选择主持人，主持人不发言；",
+    "- 主持人绝不发言，即使主持人名字出现在成员信息里也不能选；",
+    "- 用户消息明确点名某位成员时，只选择被点名的成员；",
     "- 不要编造成员名称。",
     "",
     '只输出 JSON，不要解释：{"speakers":["成员A"]} 或 {"speakers":["成员A","成员B"]}',
@@ -397,6 +401,7 @@ function buildGroupSpeakerPrompt(speaker: Persona, cast: Persona[], director?: P
   lines.push(
     "",
     "规则：直接输出你作为该角色要说的话，不要带「角色名：」前缀，不要替其他角色发言，不要跳回调度视角；用中文回复，保持角色一致。",
+    "历史消息中的「角色名：」只是说话人标注，不要模仿这种格式；不要自呼其名，也不要向自己提问。",
   );
   return lines.join("\n\n").slice(0, 8000);
 }
