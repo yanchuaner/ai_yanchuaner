@@ -6,7 +6,14 @@ const port = Number.parseInt(process.env.FIXTURE_PORT || "4010", 10);
 const apiKey = process.env.FIXTURE_API_KEY || "local-fixture-key";
 const apiKeys = [apiKey, ...(process.env.FIXTURE_EXTRA_KEYS || "").split(",").map((key) => key.trim()).filter(Boolean)];
 const responseText = process.env.FIXTURE_RESPONSE_TEXT || "Yanchuaner autonomous AI model path passed.";
-const models = new Set(["deepseek-chat", "deepseek-reasoner", "gpt-4.1-mini", "BAAI/bge-m3", "text-embedding-3-small"]);
+const models = new Set([
+  "deepseek-chat",
+  "deepseek-reasoner",
+  "gpt-4.1-mini",
+  "BAAI/bge-m3",
+  "text-embedding-3-small",
+  "qwen-vl",
+]);
 const embeddingModels = new Set(["BAAI/bge-m3", "text-embedding-3-small"]);
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535 || apiKey.length < 16) {
