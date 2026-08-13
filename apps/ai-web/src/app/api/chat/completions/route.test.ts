@@ -217,7 +217,24 @@ test("chat route schedules group speakers then streams each member independently
       description: "导演旁白",
       firstMessage: "开始",
     };
-    const conversation = await createConversation(7, { mode: "group", cast: [first, second], director });
+    const conversation = await createConversation(7, {
+      mode: "group",
+      cast: [first, second],
+      director,
+      world: {
+        worldId: "world-campus",
+        snapshot: {
+          title: "燕川中学",
+          description: "临海的寄宿制中学。",
+          timeline: "高三上学期",
+          outline: "一场关于星空与校园的日常。",
+        },
+      },
+      userRole: {
+        name: "转学生",
+        description: "刚转来高三（2）班的新同学。",
+      },
+    });
     await addKnowledgeDocument(
       7,
       first.id,
@@ -309,6 +326,8 @@ test("chat route schedules group speakers then streams each member independently
     assert.match(scheduleBody.messages[0].content, /星河旅者/);
     assert.match(scheduleBody.messages[0].content, /燕中学伴/);
     assert.match(scheduleBody.messages[0].content, /主持人绝不发言/);
+    assert.match(scheduleBody.messages[0].content, /燕川中学/);
+    assert.match(scheduleBody.messages[0].content, /转学生/);
 
     const speakerResponses: Response[] = [];
     for (const speaker of [first, second]) {
@@ -346,6 +365,9 @@ test("chat route schedules group speakers then streams each member independently
     assert.match(firstBody.messages[0].content, /旅者记得曾在星海流浪/);
     assert.match(firstBody.messages[0].content, /星海资料/);
     assert.doesNotMatch(firstBody.messages[0].content, /导演记得/);
+    assert.match(firstBody.messages[0].content, /燕川中学/);
+    assert.match(firstBody.messages[0].content, /转学生/);
+    assert.match(firstBody.messages.at(-1)?.content ?? "", /转学生：聊聊星空和校园/);
     assert.match(secondBody.messages[0].content, /你是「燕中学伴」/);
     assert.match(secondBody.messages[0].content, /校园资料/);
     assert.doesNotMatch(secondBody.messages[0].content, /旅者记得/);

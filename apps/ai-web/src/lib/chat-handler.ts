@@ -165,8 +165,8 @@ async function handleGroupSchedule(
   const cast = detail.cast ?? [];
   const history = ensureLatestUser(detail.messages, parsed);
   const schedulerMessages: AiChatMessage[] = [
-    { role: "system", content: buildSchedulerPrompt(cast, detail.director) },
-    ...formatGroupHistory(history, cast).slice(-16),
+    { role: "system", content: buildSchedulerPrompt(cast, detail.director, detail.world, detail.userRole) },
+    ...formatGroupHistory(history, cast, detail.userRole?.name).slice(-16),
   ];
   const schedulerResponse = await forwardChatCompletionJson(
     config.yanCoreApiBaseUrl,
@@ -243,7 +243,9 @@ async function handleGroupSpeaker(
     }
   }
 
-  const systemBlocks = [buildGroupSpeakerPrompt(speaker, cast, detail.director)];
+  const systemBlocks = [
+    buildGroupSpeakerPrompt(speaker, cast, detail.director, detail.world, detail.userRole),
+  ];
   const memory = await getPersonaMemory(session.subject.userId, speaker.id).catch(() => null);
   if (memory?.summary) systemBlocks.push(`【角色长期记忆】\n${memory.summary}`);
   const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
@@ -255,7 +257,7 @@ async function handleGroupSpeaker(
       model: parsed.model,
       messages: [
         { role: "system", content: systemBlocks.join("\n\n").slice(0, 12_000) },
-        ...formatGroupHistory(history, cast),
+        ...formatGroupHistory(history, cast, detail.userRole?.name),
       ],
     },
     fetcher,
@@ -283,7 +285,12 @@ function ensureLatestUser(history: StoredMessage[], parsed: AiChatRequest): Stor
   return [...history, { id: `pending-${Date.now()}`, role: "user", content: fallback }];
 }
 
-function buildSchedulerPrompt(cast: Persona[], director?: Persona): string {
+function buildSchedulerPrompt(
+  cast: Persona[],
+  director?: Persona,
+  world?: ConversationDetail["world"],
+  userRole?: ConversationDetail["userRole"],
+): string {
   const lines = [
     "你是多人群聊的调度器，只决定本轮由谁发言，不参与对话，也不要生成任何台词。",
     "",
@@ -296,6 +303,12 @@ function buildSchedulerPrompt(cast: Persona[], director?: Persona): string {
       `主持人（只营造场景氛围，不发言）：${director.name}`,
       director.description.slice(0, 200),
     );
+  }
+  if (world) {
+    lines.push("", buildWorldPrompt(world));
+  }
+  if (userRole) {
+    lines.push("", `用户当前扮演：${userRole.name}${userRole.description ? `（${userRole.description.slice(0, 200)}）` : ""}`);
   }
   lines.push(
     "",
@@ -352,12 +365,19 @@ function pickFallbackSpeakers(cast: Persona[]): Persona[] {
   return second ? [first, second] : [first];
 }
 
-function formatGroupHistory(messages: StoredMessage[], cast: Persona[]): AiChatMessage[] {
+function formatGroupHistory(
+  messages: StoredMessage[],
+  cast: Persona[],
+  userRoleName?: string,
+): AiChatMessage[] {
   const lines = messages
     .filter((message) => message.role === "user" || message.role === "assistant")
     .map((message) => {
       if (message.role === "user") {
-        return { role: "user" as const, content: message.content };
+        return {
+          role: "user" as const,
+          content: userRoleName ? `${userRoleName}：${message.content}` : message.content,
+        };
       }
       const speaker = message.personaId
         ? cast.find((persona) => persona.id === message.personaId)
@@ -378,7 +398,13 @@ function formatGroupHistory(messages: StoredMessage[], cast: Persona[]): AiChatM
   return trimmed.reverse();
 }
 
-function buildGroupSpeakerPrompt(speaker: Persona, cast: Persona[], director?: Persona): string {
+function buildGroupSpeakerPrompt(
+  speaker: Persona,
+  cast: Persona[],
+  director?: Persona,
+  world?: ConversationDetail["world"],
+  userRole?: ConversationDetail["userRole"],
+): string {
   const optional = (title: string, value: string | undefined) => (value?.trim() ? `${title}\n${value}` : "");
   const lines = [
     `你是「${speaker.name}」，正在与用户和其他成员进行群聊。`,
@@ -398,12 +424,31 @@ function buildGroupSpeakerPrompt(speaker: Persona, cast: Persona[], director?: P
   if (director) {
     lines.push("", `主持人背景（只营造场景氛围，不替角色发言）：${director.description.slice(0, 200)}`);
   }
+  if (world) {
+    lines.push("", buildWorldPrompt(world));
+  }
+  if (userRole) {
+    lines.push("", `用户扮演的角色是「${userRole.name}」${userRole.description ? `，人设：${userRole.description.slice(0, 300)}` : ""}。请直接与这位角色互动，用这个称呼称呼对方。`);
+  }
   lines.push(
     "",
     "规则：直接输出你作为该角色要说的话，不要带「角色名：」前缀，不要替其他角色发言，不要跳回调度视角；用中文回复，保持角色一致。",
     "历史消息中的「角色名：」只是说话人标注，不要模仿这种格式；不要自呼其名，也不要向自己提问。",
   );
   return lines.join("\n\n").slice(0, 8000);
+}
+
+function buildWorldPrompt(world: ConversationDetail["world"]): string {
+  if (!world) return "";
+  const { title, description, timeline, outline } = world.snapshot;
+  return [
+    `【世界：${title}】`,
+    description ? `世界观：${description}` : "",
+    timeline ? `时间线：${timeline}` : "",
+    outline ? `故事大纲：${outline.slice(0, 6000)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildKnowledgePrompt(hits: KnowledgeHit[]): string {
