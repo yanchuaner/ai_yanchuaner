@@ -22,7 +22,7 @@ import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
 import { UserKnowledgeDrawer } from "@/components/user-knowledge";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
-import { createSpeakerPrefixStripper } from "@/lib/group-speech";
+import { containsOtherSpeakerSpeech, createSpeakerPrefixStripper } from "@/lib/group-speech";
 import { PRESET_WORLDS } from "@/lib/preset-worlds";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
@@ -1207,6 +1207,15 @@ export default function HomePage() {
           if (done) break;
         }
         if (!content) throw new Error(`${speaker.name} 未返回可显示内容。`);
+        if (containsOtherSpeakerSpeech(content, speaker.name, activeCast.map((persona) => persona.name))) {
+          setMessages((current) =>
+            current.filter(
+              (message) =>
+                !(message.role === "assistant" && message.personaId === speaker.id && message.id === messageId),
+            ),
+          );
+          return { skipped: true as const, name: speaker.name };
+        }
         setMessages((current) =>
           current.map((message) =>
             message.id === messageId
@@ -1240,8 +1249,20 @@ export default function HomePage() {
               : undefined,
           }),
         });
+        return { skipped: false as const };
       }),
     );
+    const skipped = results
+      .filter((result) => result.status === "fulfilled")
+      .map(
+        (result) =>
+          (result as PromiseFulfilledResult<{ skipped: boolean; name?: string }>).value,
+      )
+      .filter((value) => value.skipped)
+      .map((value) => value.name);
+    if (skipped.length > 0) {
+      setError(`${skipped.join("、")} 的回复越界替别人说话了，已收起；请以本人回复为准。`);
+    }
     const failures = results.filter(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
