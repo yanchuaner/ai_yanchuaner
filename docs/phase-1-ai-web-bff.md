@@ -1,5 +1,7 @@
 # 阶段 1：自主 AI Web/BFF
 
+> 历史阶段设计，记录 2026-07-19 的最小 BFF 边界。当前 AI Web 已覆盖会话、角色、群聊、知识、记忆与媒体；现行架构见 [architecture.md](architecture.md)，当前状态见工作区 `docs/燕中生态项目关系.txt`。本文的“当前限制”和“下一增量”不再作为现状真值。
+
 更新日期：2026-07-19
 状态：`USER_SCOPED_CHAT_PATH_IMPLEMENTED`
 

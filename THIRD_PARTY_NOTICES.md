@@ -9,7 +9,7 @@
 | LiteLLM Database | `sha256:64d3547e0b131bf4638342e52c12bc46d6f1d9b8498e4b731ff31be5ab316ea9` | `BerriAI/litellm@b3086ccd74553565c9a39716e72303ae985555f9`，1.92.0 stable cut | 仓库 `enterprise/` 外为 MIT；发布前仍须确认所用镜像未启用企业专有内容 |
 | Open WebUI | `v0.10.2@sha256:9fcea9c6e32ab60b0498f3986c6cdf651ddbe61db48d2213a3d28048ddd673d4` | `open-webui/open-webui@ecd48e2f718220a6400ecf49eafd4867a38feb10` | Open WebUI License；品牌修改仅在滚动 30 日直接用户不超过 50 人、取得书面许可或取得企业许可时允许 |
 | PostgreSQL | `16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777` | PostgreSQL 16.14 | PostgreSQL License；Docker 官方镜像包装脚本为 MIT |
-| Next.js | `15.5.19` | `vercel/next.js` | MIT |
+| Next.js | `15.5.21` | `vercel/next.js` | MIT |
 | React / React DOM | `18.3.1` | `facebook/react` | MIT |
 | openid-client | `6.8.4` | `panva/openid-client` | MIT；OpenID Connect 客户端协议实现 |
 | Lucide React | `0.542.0` | `lucide-icons/lucide` | ISC；Feather 衍生部分为 MIT |
