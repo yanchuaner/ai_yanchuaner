@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deletePersona, listPersonas, updatePersona } from "@/lib/persona-library";
+import { createFilePersonaRepository } from "@/lib/persona-file-repository";
 import { personaToCharaCardV3 } from "@/lib/chara-card";
 import { requireAiSession } from "@/lib/session-guard";
 
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
   const { id } = await params;
-  const personas = await listPersonas(guard.session.subject.userId);
+  const personas = await createFilePersonaRepository().list(guard.session.subject.userId);
   const persona = personas.find((item) => item.id === id);
   if (!persona) return NextResponse.json({ error: "角色不存在。" }, { status: 404 });
   const card = personaToCharaCardV3(persona);
@@ -30,7 +30,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (guard.response) return guard.response;
   const { id } = await params;
   try {
-    await deletePersona(guard.session.subject.userId, id);
+    await createFilePersonaRepository().delete(guard.session.subject.userId, id);
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "角色不存在。" }, { status: 404 });
@@ -47,7 +47,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 			? (body as Record<string, unknown>).persona
 			: undefined;
 	try {
-		const persona = await updatePersona(guard.session.subject.userId, id, input);
+		const persona = await createFilePersonaRepository().update(guard.session.subject.userId, id, input);
 		return NextResponse.json({ persona });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "";

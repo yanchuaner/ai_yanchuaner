@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPersona, listPersonas } from "@/lib/persona-library";
+import { createFilePersonaRepository } from "@/lib/persona-file-repository";
 import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
-  const personas = await listPersonas(guard.session.subject.userId);
+  const personas = await createFilePersonaRepository().list(guard.session.subject.userId);
   return NextResponse.json({ personas });
 }
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       ? (body as Record<string, unknown>).persona
       : undefined;
   try {
-    const persona = await createPersona(guard.session.subject.userId, input);
+    const persona = await createFilePersonaRepository().create(guard.session.subject.userId, input);
     return NextResponse.json({ persona });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
