@@ -28,7 +28,7 @@
 
 - 实体带稳定 ID、owner 与时间戳；`schemaVersion` 目标为 `1.0`。
 - `apps/ai-web/scripts/migrate-data.ts`（`pnpm migrate:data`）支持 dry-run、备份、校验和与回滚。
-- 已知缺口：消息记录尚未补齐 `schemaVersion`，迁移未接入启动/Compose。
+- 新消息在仓储边界自动写入 `schemaVersion=1.0`；生产启动时自动执行数据迁移（备份到数据卷内 `.migration-backups`），配置无效或迁移失败会阻止启动。
 
 ## 架构测试
 

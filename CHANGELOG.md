@@ -2,6 +2,23 @@
 
 本文件记录燕中 AI（ai_yanchuaner）对外可观察的版本变更。格式基于 Keep a Changelog，版本号遵循语义化版本。
 
+## [v1.0.1] - 2026-08-17
+
+生产可靠性收口（R3.1）：修复 Go-Live Audit v2 登记的 P0/P1 剩余问题。
+
+### Added
+
+- main 分支保护：required check `ai-web`、enforce admins、禁止 force push 与分支删除。
+- 磁盘水位告警：`disk-governance.sh --check` 与 `AI_WEB_DISK_ALERT_PERCENT`。
+- 账本自动对账：`pnpm reconcile:ledger`（本地消息 ↔ 网关 logs/ledger）。
+- 服务启动 fail-fast：配置校验失败或生产数据迁移失败立即退出。
+
+### Fixed
+
+- 观测事件现在真实生成 `durationMs` 与 `outcome`，不再只有字段白名单。
+- `scripts/health-check.sh` 纳入 ai-web 服务。
+- 新消息自动写入 `schemaVersion=1.0`，生产启动自动执行数据迁移。
+
 ## [v1.0.0] - 2026-08-17
 
 v1.0 文档冻结与生产同步。架构已冻结，本版本只允许文档变更。

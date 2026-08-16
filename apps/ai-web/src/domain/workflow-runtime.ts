@@ -1,6 +1,11 @@
 // 最小工作流运行时：生命周期、步骤、超时、取消与事件发布。
 
-import { createWorkflowEvent, type WorkflowEvent, type WorkflowEventPhase } from "@/domain/workflow-events";
+import {
+  createWorkflowEvent,
+  type WorkflowEvent,
+  type WorkflowEventPhase,
+  type WorkflowOutcome,
+} from "@/domain/workflow-events";
 
 export type WorkflowStepContext = {
   stepId: string;
@@ -40,13 +45,23 @@ function eventId(): string {
   return `evt_${crypto.randomUUID().replaceAll("-", "")}`;
 }
 
+function outcomeFor(phase: WorkflowEventPhase): WorkflowOutcome | undefined {
+  if (phase === "completed") return "success";
+  if (phase === "failed") return "failure";
+  if (phase === "cancelled") return "cancelled";
+  if (phase === "degraded") return "degraded";
+  return undefined;
+}
+
 export async function runWorkflow(input: WorkflowRunInput): Promise<void> {
   const controller = new AbortController();
   const timeoutHandle = input.timeoutMs
     ? setTimeout(() => controller.abort(new DOMException("工作流超时。", "TimeoutError")), input.timeoutMs)
     : undefined;
   const signal = input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal;
+  const runStartedAt = Date.now();
   const emit = (entity: WorkflowEvent["entity"], phase: WorkflowEventPhase, extra: Partial<WorkflowEvent> = {}) => {
+    const now = Date.now();
     input.onEvent(
       createWorkflowEvent({
         eventId: eventId(),
@@ -56,6 +71,8 @@ export async function runWorkflow(input: WorkflowRunInput): Promise<void> {
         traceId: input.traceId,
         clientRequestId: input.clientRequestId,
         requestId: input.requestId,
+        durationMs: phase === "started" ? undefined : now - runStartedAt,
+        outcome: phase === "started" ? undefined : outcomeFor(phase),
         ...extra,
       }),
     );
@@ -64,10 +81,19 @@ export async function runWorkflow(input: WorkflowRunInput): Promise<void> {
   emit("run", "started", { stepId: undefined });
   try {
     for (const step of input.steps) {
+      const stepStartedAt = Date.now();
       const context: WorkflowStepContext = {
         stepId: step.id,
         signal,
-        emit: (entity, phase, extra = {}) => emit(entity, phase, { stepId: step.id, ...extra }),
+        emit: (entity, phase, extra = {}) => {
+          const now = Date.now();
+          emit(entity, phase, {
+            stepId: step.id,
+            durationMs: phase === "started" ? undefined : now - stepStartedAt,
+            outcome: phase === "started" ? undefined : outcomeFor(phase),
+            ...extra,
+          });
+        },
       };
       emit("step", "started", { stepId: step.id });
       try {

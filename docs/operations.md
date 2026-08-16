@@ -11,7 +11,9 @@ docker stats --no-stream
 curl -s -o /dev/null -w '%{http_code}\n' https://ai.yanchuaner.cn/api/health
 ```
 
-注意：`scripts/health-check.sh` 当前只检查 db/litellm/open-webui；ai-web 由外部监控 `/api/health` 覆盖。把 ai-web 纳入健康脚本是已登记缺口。
+`scripts/health-check.sh` 覆盖 db/litellm/open-webui/ai-web 四个服务，ai-web 通过 `docker compose port` 定位后请求 `/api/health`。外部监控仍可单独访问 `https://ai.yanchuaner.cn/api/health`。
+
+服务启动时执行配置校验与生产数据迁移：配置无效或迁移失败会立即退出（fail-fast），不会以 503 空转。
 
 ## 日志
 
@@ -75,9 +77,18 @@ tar -tzf ai-web-data.tar.gz
 ```bash
 bash scripts/disk-governance.sh --dry-run
 bash scripts/disk-governance.sh
+bash scripts/disk-governance.sh --check
 ```
 
-保留最新 5 个 ai-web 日期镜像与 `preview`/`phase-1`；悬空镜像与构建缓存按 `DOCKER_PRUNE_UNTIL`（默认 72h）清理。每周备份 cron 会自动执行。磁盘告警通道是已登记缺口。
+保留最新 5 个 ai-web 日期镜像与 `preview`/`phase-1`；悬空镜像与构建缓存按 `DOCKER_PRUNE_UNTIL`（默认 72h）清理。磁盘使用率达到 `AI_WEB_DISK_ALERT_PERCENT`（默认 85%）时输出 `DISK_ALERT` 并返回退出码 1；`--check` 只检查不清理。每周备份 cron 会自动执行治理与检查。
+
+## 账本对账
+
+```bash
+pnpm reconcile:ledger
+```
+
+脚本拉取本地会话消息的 `request_id`/usage，与网关 `logs`、`quota_ledger_entries` 比对，输出 machine-readable JSON；发现缺日志、缺账本、悬挂 reserve、usage/金额不一致时退出码为 1。建议与备份 cron 一起每周执行。
 
 ## 故障处理
 
@@ -94,7 +105,7 @@ bash scripts/disk-governance.sh
 ### 计费异常
 
 - 现象：同一操作出现多组 reserve/settlement，或失败请求出现 settlement。
-- 动作：用 request_id 查 `quota_ledger_entries`；确认 BFF 去重是否生效（同键第二请求应 409）；必要时人工核对 `scripts/verify-ai-web-identity.ps1`。
+- 动作：用 request_id 查 `quota_ledger_entries`；确认 BFF 去重是否生效（同键第二请求应 409）；运行 `pnpm reconcile:ledger` 自动对账，必要时人工核对 `scripts/verify-ai-web-identity.ps1`。
 
 ### 数据恢复
 
@@ -103,7 +114,6 @@ bash scripts/disk-governance.sh
 
 ## 已知缺口
 
-- main 分支 required check 未启用；失败 CI 不阻断合并。
-- 磁盘水位无告警通道。
-- `health-check.sh` 未包含 ai-web。
-- 配置错误不会 fail-fast，容器以 `/api/health=503` 保持运行。
+- 磁盘告警为脚本级（日志 + 退出码），尚无外部告警通道（邮件/IM）。
+- 备份离站副本仍为人工同步。
+- 观测查询无索引；写中断可能残留 `.tmp` 文件。

@@ -41,17 +41,23 @@ node scripts/acceptance/run-fault-injection.mjs --scenario stream-abort
 
 每个场景创建可撤销测试资源、执行请求、校验 HTTP 状态/错误码/账本，结束后自动清理，输出 machine-readable JSON report。
 
-## 已知缺口（v1.0 文档冻结时如实登记）
+## 已收口（R3.1 生产可靠性收口）
 
-以下问题不属于“已实现”能力，修复前不得在文档中描述为完成：
+- GitHub main 分支保护与 required check 已启用，实测失败 CI 会阻断合并。
+- 磁盘水位告警：`disk-governance.sh --check` 与 `AI_WEB_DISK_ALERT_PERCENT`。
+- 观测事件由运行时真实生成 `durationMs`/`outcome`。
+- `health-check.sh` 已纳入 ai-web。
+- 配置错误 fail-fast：服务启动校验失败即退出。
+- 消息写入自动带 `schemaVersion=1.0`，生产启动自动执行数据迁移。
+- 账本自动对账：`pnpm reconcile:ledger` 关联本地消息与网关 logs/ledger。
 
-- 观测事件 schema 允许 `durationMs`/`outcome`，但运行时尚未真实生成（见 [observability.md](observability.md)）。
-- `scripts/health-check.sh` 未包含 ai-web 服务（见 [operations.md](operations.md)）。
-- 配置错误不会 fail-fast，容器会以 `/api/health=503` 保持运行（见 [operations.md](operations.md)）。
-- 消息记录尚未补齐 `schemaVersion`，数据迁移未接入启动流程（见 [repository.md](repository.md)）。
-- 消息 `request_id`/usage 与网关账本只有人工核对脚本，没有定时自动对账（见 [billing.md](billing.md)）。
-- GitHub main 分支保护与 required check 尚未在仓库设置中启用（见 [operations.md](operations.md)）。
-- 磁盘水位没有告警通道，只有清理脚本（见 [operations.md](operations.md)）。
+## 仍待办
+
+- 备份离站副本仍为人工同步。
+- 请求去重注册表为单进程内存实现。
+- 观测查询仍为全文件扫描，无索引。
+- 写中断可能残留 `.tmp` 文件，暂无自动清理。
+- 同键去重 TTL（10 分钟）后的重发语义需产品确认。
 
 ## 历史与验收记录
 

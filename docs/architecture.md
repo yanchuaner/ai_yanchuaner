@@ -131,7 +131,7 @@ type ContextContribution = {
 
 多实例、跨实体事务或数据规模超过文件模式边界时，迁移到数据库；不通过共享卷并发写继续扩容。
 
-已知限制：消息记录尚未补齐 `schemaVersion`，迁移脚本未接入启动流程；文件模式不支持多实例共享写。
+新消息在仓储边界写入 `schemaVersion=1.0`；生产启动自动执行迁移（备份到 `.migration-backups`）。文件模式不支持多实例共享写。
 
 ## YanCore 网关端口
 
@@ -157,7 +157,7 @@ adapter 负责旧/新响应兼容、错误码归一、request ID 和会话撤销
 - `session.revoked`；
 - `repository.migration.completed/failed`。
 
-字段白名单包含 workflow/version、conversation、trace、request、step、duration、outcome 和错误码，不包含完整提示词、知识正文、Key 或 Cookie。**当前运行时只真实生成 errorCode（失败/取消事件）；durationMs 与 outcome 尚在 schema 白名单中但未由运行时产出**，属于已登记缺口，见 [observability.md](observability.md)。
+字段白名单包含 workflow/version、conversation、trace、request、step、duration、outcome 和错误码，不包含完整提示词、知识正文、Key 或 Cookie。运行时真实生成 `durationMs` 与 `outcome`（completed→success、failed→failure、cancelled→cancelled、degraded→degraded），失败/取消事件保留 `errorCode`。
 
 ## 当前实现映射
 
@@ -170,7 +170,7 @@ adapter 负责旧/新响应兼容、错误码归一、request ID 和会话撤销
 | `apps/ai-web/src/lib/*-repository.ts`、`*-file-repository.ts` | 仓储端口与文件/内存适配器 | 已落地；写入带锁与原子替换 |
 | `apps/ai-web/src/lib/yancore-gateway.ts`、`chat.ts`、`embedding.ts` | 网关客户端与请求映射 | 已落地；页面不直接解析上游字段 |
 | `apps/ai-web/src/lib/media.ts`、`voice.ts`、`byok-settings-*` | BYOK 协议转发与加密凭据 | 已落地 |
-| `apps/ai-web/src/observability/*` | 事件脱敏、JSONL 导出与查询 | 已落地；duration/outcome 为登记缺口 |
+| `apps/ai-web/src/observability/*` | 事件脱敏、JSONL 导出与查询 | 已落地；运行时产出 duration/outcome |
 | Route Handlers | HTTP/SSE 适配与错误映射 | 保持薄 transport |
 
 ## 已完成边界（相对历史阶段）
@@ -182,11 +182,10 @@ adapter 负责旧/新响应兼容、错误码归一、request ID 和会话撤销
 
 ## 仍待办（v1.0 冻结时如实登记）
 
-- 观测事件 `durationMs`/`outcome` 真实产出。
-- `health-check.sh` 纳入 ai-web；配置错误 fail-fast。
-- 消息 `schemaVersion` 补齐与迁移自动化。
-- 消息与网关账本自动对账。
-- GitHub required check 与磁盘告警（仓库/运维设置）。
+- 备份离站副本自动化。
+- 请求去重注册表多实例化。
+- 观测查询索引化与 `.tmp` 残留清理。
+- 外部告警通道（磁盘/健康）。
 
 ## 禁止的捷径
 

@@ -8,6 +8,7 @@ export type StoredUsage = {
 };
 
 export type StoredMessage = {
+  schemaVersion?: "1.0";
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -94,6 +95,7 @@ export function isValidStoredMessage(message: unknown): message is StoredMessage
   if (!message || typeof message !== "object") return false;
   const candidate = message as Record<string, unknown>;
   if (candidate.role !== "user" && candidate.role !== "assistant") return false;
+  if (candidate.schemaVersion !== undefined && candidate.schemaVersion !== "1.0") return false;
   if (typeof candidate.content !== "string" || candidate.content.length === 0 || candidate.content.length > 16_000) {
     return false;
   }
@@ -365,17 +367,18 @@ export async function appendMessage(
   conversationId: string,
   message: StoredMessage,
 ): Promise<ConversationSummary> {
-  if (!isValidStoredMessage(message)) throw new Error("message is invalid");
+  const storedMessage: StoredMessage = { schemaVersion: "1.0", ...message };
+  if (!isValidStoredMessage(storedMessage)) throw new Error("message is invalid");
   return withFileLock(storePath(userId), async () => {
     const store = await readStore(userId);
     const conversation = store.conversations.find((item) => item.id === conversationId);
     if (!conversation) throw new Error("conversation not found");
-    conversation.messages.push(message);
+    conversation.messages.push(storedMessage);
     if (conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION) {
       conversation.messages.splice(0, conversation.messages.length - MAX_MESSAGES_PER_CONVERSATION);
     }
-    if (message.role === "user" && conversation.title === DEFAULT_TITLE) {
-      conversation.title = message.content.replace(/\s+/g, " ").trim().slice(0, 30);
+    if (storedMessage.role === "user" && conversation.title === DEFAULT_TITLE) {
+      conversation.title = storedMessage.content.replace(/\s+/g, " ").trim().slice(0, 30);
     }
     conversation.updatedAt = Date.now();
     await writeStore(userId, store);

@@ -18,8 +18,17 @@ curl --fail --silent --show-error --max-time 10 \
   --retry 12 --retry-delay 5 --retry-connrefused --retry-all-errors \
   "http://$openwebui_address/health" >/dev/null
 
+aiweb_address="$(docker compose --profile yancore port ai-web 3001 | head -n 1)"
+if [[ -z "$aiweb_address" ]]; then
+  echo "无法读取 AI Web 的宿主机端口" >&2
+  exit 1
+fi
+curl --fail --silent --show-error --max-time 10 \
+  --retry 12 --retry-delay 5 --retry-connrefused --retry-all-errors \
+  "http://$aiweb_address/api/health" >/dev/null
+
 running_services="$(docker compose ps --status running --services)"
-for service in db litellm open-webui; do
+for service in db litellm open-webui ai-web; do
   if ! grep -qx "$service" <<<"$running_services"; then
     echo "服务未运行：$service" >&2
     exit 1
