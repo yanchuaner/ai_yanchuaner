@@ -9,7 +9,7 @@
 | LiteLLM Database | image digest + `BerriAI/litellm@b3086ccd74553565c9a39716e72303ae985555f9` | 只负责协议、路由、重试和成本采集 |
 | Open WebUI | `v0.10.2` image digest + `open-webui/open-webui@ecd48e2f718220a6400ecf49eafd4867a38feb10` | 过渡 AI 客户端，不是自主源码 |
 | PostgreSQL | `16.14-alpine` image digest | LiteLLM 数据库，不承载燕中权益真值 |
-| Next.js / React | `15.5.19` / `18.3.1` | 自主 AI Web 框架，不承载身份或额度真值 |
+| Next.js / React | `15.5.21` / `18.3.1` | 自主 AI Web 框架，不承载身份或额度真值 |
 | openid-client | `6.8.4` | OpenID 认证客户端与 ID Token 验证，不定义 YanCore 业务协议 |
 | Lucide React | `0.542.0` | 工作台图标，不构成燕中品牌资产 |
 | Node.js 官方镜像 | `22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3` | AI Web 构建与运行时；升级时同步复核基础 Debian 包 |
@@ -25,7 +25,7 @@
 5. 最后才接入模型与执行聊天、图片、额度、备份和恢复验收。
 
 pnpm 安装脚本仅批准 `esbuild` 与 `sharp`，`allowBuilds` 之外的依赖脚本默认拒绝。新增依赖必须先记录必要性、版本、许可证和运行边界，再更新锁文件。
-`postcss` 由工作区覆盖到 `8.5.10`，用于修复 `GHSA-qx2v-qp2m-jg93`；升级 Next.js 时必须复核该覆盖是否仍需要。
+`postcss`、`sharp` 和 `nanoid` 分别由工作区覆盖到 `8.5.23`、`0.35.3` 和 `3.3.18`，用于固定 Next.js 生产依赖图中的安全修复版本；升级 Next.js 时必须复核这些覆盖是否仍需要。
 
 `.env` 只保存本机或部署环境变量并保持 Git 忽略。上游供应商密钥通过受控配置流程进入 LiteLLM，不写入 `.env`、Compose、脚本参数、终端历史或仓库。
 
@@ -42,3 +42,16 @@ pnpm 安装脚本仅批准 `esbuild` 与 `sharp`，`allowBuilds` 之外的依赖
 - 回滚 digest、数据库兼容性和不可逆迁移说明。
 
 在 Open WebUI 用户级身份归因完成前，共享服务 Key 只记入独立服务账户，不得据此扣减个人权益。在取得书面或企业品牌许可前，还必须保持滚动 30 日直接用户不超过 50 人。
+
+## 生产依赖审计
+
+审计日期：2026-08-14。命令：`pnpm audit --prod --audit-level high`。当前结果为 0 个 high、0 个 critical。
+
+| 包与原版本 | 类型与依赖路径 | Advisory | 可达性与 Preview 影响 | 处置 |
+| --- | --- | --- | --- | --- |
+| `next@15.5.19` | 直接生产依赖：`apps/ai-web > next` | `GHSA-m99w-x7hq-7vfj`、`GHSA-89xv-2m56-2m9x`、`GHSA-p9j2-gv94-2wf4` | App Router 运行时生产可达；当前代码未使用 Server Actions 或动态 rewrite，但框架请求面仍属于 Preview 运行链路 | 升级到 `15.5.21` |
+| `sharp@0.34.5` | 传递生产依赖：`apps/ai-web > next > sharp` | `GHSA-f88m-g3jw-g9cj` | Next.js 图片处理运行时可加载；当前未配置远程图片优化，但依赖随生产产物安装 | 覆盖到 `0.35.3` |
+| `postcss@8.5.10` | 传递生产依赖：`apps/ai-web > next > postcss` | `GHSA-6g55-p6wh-862q`、`GHSA-r28c-9q8g-f849` | 当前仅构建期处理仓库内 CSS，未接收用户 CSS，Preview 运行时不可达；仍属于生产依赖审计范围 | 覆盖到 `8.5.23` |
+| `nanoid@3.3.16` | 传递生产依赖：`apps/ai-web > next > postcss > nanoid` | `GHSA-2v37-7h3g-55p8` | 当前仅由 PostCSS 间接使用，未将攻击者控制的 size 传入生成器，Preview 运行时不可达 | 覆盖到 `3.3.18` |
+
+当前没有需要风险接受的 high/critical 项。后续审计若失败，必须逐项登记生产可达性、当前影响、缓解、owner、复核日期和到期日；登记不能替代可用的安全升级。

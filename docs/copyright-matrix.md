@@ -9,7 +9,7 @@
 | `open-webui` 容器 | Open WebUI `0.10.2`，revision `ecd48e2f718220a6400ecf49eafd4867a38feb10` | 作为外部客户端依赖；遵守品牌条件和完整许可 |
 | `litellm` 容器 | BerriAI/LiteLLM revision `b3086ccd74553565c9a39716e72303ae985555f9` | 作为外部路由依赖；升级时复核企业目录边界 |
 | `db` 容器 | PostgreSQL `16.14-alpine` | 作为外部数据库依赖 |
-| `apps/ai-web` npm 依赖 | Next.js `15.5.19`、React `18.3.1`、openid-client `6.8.4`、Lucide React `0.542.0` | 作为框架、OIDC 协议客户端和图标依赖；版本由 `pnpm-lock.yaml` 固定 |
+| `apps/ai-web` npm 依赖 | Next.js `15.5.21`、React `18.3.1`、openid-client `6.8.4`、Lucide React `0.542.0` | 作为框架、OIDC 协议客户端和图标依赖；版本由 `pnpm-lock.yaml` 固定 |
 
 三个镜像仅由 `docker-compose.yml` 引用，本仓库未复制或修改其源码。完整许可见 `THIRD_PARTY_NOTICES.md`。
 
@@ -21,8 +21,8 @@
 
 | 模块 | 优先级 | 验收后目标 |
 | --- | --- | --- |
-| Open WebUI 核心交互与燕中设计层 | P1/P2 | 自主客户端覆盖登录后首页、对话、文件、搜索、知识库和助手，再将 Open WebUI 降为可替换依赖 |
-| Open WebUI 到控制面的用户级归因 | P1/P2 | 自主 AI Web 已使用逐登录应用 Key；Open WebUI 共享服务路径继续隔离，待其能力被自主客户端替换 |
+| Open WebUI 过渡运行路径 | P1 | 自主客户端已成为公网入口；Open WebUI 保持内网兼容与回退，完成数据退役方案后可移除 |
+| AI 使用层模块边界 | P1 | 将页面与集中式对话处理器迁移为接入适配器、工作流、能力和仓储端口 |
 | LiteLLM 数据库内业务配置 | P1 | 渠道与成本配置由自主控制面声明和审计，LiteLLM 仅执行路由 |
 | 本机脚本型运维 | P2 | 迁移到可审计的部署流水线、Secret 管理、监控与告警 |
 
@@ -30,15 +30,15 @@
 
 | 跟踪范围 | 来源证据 | 当前许可 |
 | --- | --- | --- |
-| `docker-compose.yml`、`.env.example`、`gateway/config.yaml` | 本仓库从初始提交演进的燕中编排与配置，不包含第三方源码 | 自主内容暂未授予公众许可 |
-| `scripts/*.ps1`、`scripts/*.sh` | 本仓库内独立运维、备份、加固和冒烟流程 | 自主内容暂未授予公众许可 |
-| `deploy/nginx/**` | 燕中部署边界与反向代理配置 | 自主内容暂未授予公众许可 |
-| `README.md`、`docs/**`、治理文件 | 燕中产品、架构、验收、来源和安全文档 | 自主内容暂未授予公众许可 |
-| `docs/yancore-subject-grant-client.md` | 燕中主体委托客户端契约，未复制 Open WebUI/New API 实现 | 自主内容暂未授予公众许可 |
-| `apps/ai-web/src/**`、`apps/ai-web/Dockerfile` | 独立需求、隔离 OIDC/BFF 设计、YanCore 客户端、加密会话、SSE 代理、容器安全边界、燕中对话界面和真实回调自动化 | 自主内容暂未授予公众许可 |
-| 根 `package.json`、`pnpm-workspace.yaml` | 燕中自主应用工作区与依赖脚本白名单 | 自主内容暂未授予公众许可 |
+| `docker-compose.yml`、`.env.example`、`gateway/config.yaml` | 本仓库从初始提交演进的燕中编排与配置，不包含第三方源码 | 随仓库 AGPL-3.0 |
+| `scripts/*.ps1`、`scripts/*.sh` | 本仓库内独立运维、备份、加固和冒烟流程 | 随仓库 AGPL-3.0 |
+| `deploy/nginx/**` | 燕中部署边界与反向代理配置 | 随仓库 AGPL-3.0 |
+| `README.md`、`docs/**`、治理文件 | 燕中产品、架构、验收、来源和安全文档 | 随仓库 AGPL-3.0 |
+| `docs/yancore-subject-grant-client.md` | 燕中主体委托客户端契约，未复制 Open WebUI/New API 实现 | 随仓库 AGPL-3.0 |
+| `apps/ai-web/src/**`、`apps/ai-web/Dockerfile` | 独立需求、隔离 OIDC/BFF 设计、YanCore 客户端、加密会话、SSE 代理、容器安全边界、燕中对话界面和真实回调自动化 | 随仓库 AGPL-3.0 |
+| 根 `package.json`、`pnpm-workspace.yaml` | 燕中自主应用工作区与依赖脚本白名单 | 随仓库 AGPL-3.0 |
 
-“已自主实现”只表示当前 Git 历史与文件内容未显示复制第三方实现，不自动决定权利人、贡献转让或最终开源许可证。
+“已自主实现”表示当前 Git 历史与文件内容未显示复制第三方实现；这些内容随仓库以 AGPL-3.0 发布，但普通贡献不会自动转让贡献者版权。
 
 ## 更新规则
 

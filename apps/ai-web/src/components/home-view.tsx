@@ -51,7 +51,7 @@ export function HomeView({
     <div className={styles.page}>
       <section className={styles.hero}>
         <div>
-          <p className={styles.eyebrow}>YANCHUANER AI</p>
+          <p className={styles.eyebrow}>YANZHONG AI</p>
           <h1>{greeting}，{identityName}</h1>
           <p className={styles.subtitle}>普通助手随时可用，想换种聊法就进入角色世界。</p>
         </div>

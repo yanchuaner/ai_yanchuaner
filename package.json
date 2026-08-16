@@ -1,12 +1,18 @@
 {
   "name": "ai-yanchuaner",
   "private": true,
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev:ai-web": "pnpm --filter @yanchuaner/ai-web dev",
     "dev:fixture": "node scripts/local-openai-fixture.mjs",
     "build:ai-web": "pnpm --filter @yanchuaner/ai-web build",
     "test:ai-web": "pnpm --filter @yanchuaner/ai-web test",
-    "typecheck:ai-web": "pnpm --filter @yanchuaner/ai-web typecheck"
+    "typecheck:ai-web": "pnpm --filter @yanchuaner/ai-web typecheck",
+    "contracts:verify": "node scripts/contracts.mjs verify",
+    "contracts:test": "node --test scripts/contracts.test.mjs",
+    "contracts:sync": "node scripts/contracts.mjs sync",
+    "audit:prod": "pnpm audit --prod --audit-level high",
+    "release:check": "pnpm typecheck:ai-web && pnpm test:ai-web && pnpm build:ai-web && pnpm audit:prod"
   }
 }
