@@ -47,11 +47,9 @@ import {
   type ChatRequestMessage,
 } from "@/lib/chat-actions";
 import { ActionError } from "@/lib/action-http";
-import * as personaActions from "@/lib/persona-actions";
-import * as knowledgeActions from "@/lib/knowledge-actions";
-import { getFavoritePersonaIds, setFavoritePersonaIds } from "@/lib/preferences-actions";
 import { useAccountState, type SessionState } from "@/hooks/use-account-state";
 import { useMediaState } from "@/hooks/use-media-state";
+import { usePersonaState, type DetailState } from "@/hooks/use-persona-state";
 import { useVoiceState } from "@/hooks/use-voice-state";
 import { useWorldState } from "@/hooks/use-world-state";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
@@ -60,12 +58,7 @@ import type {
   ChatMessage,
   ConversationSummary,
   KnowledgeDraft,
-  PersonaKnowledge,
 } from "@/lib/types";
-
-type DetailState =
-  | { open: false; persona?: undefined; mode?: never }
-  | { open: true; persona?: Persona; mode: "view" | "edit" | "create" };
 
 function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
   return { id: crypto.randomUUID(), role, content };
@@ -82,18 +75,10 @@ export default function HomePage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [view, setView] = useState<AppView>("home");
-  const [personas, setPersonas] = useState<Persona[]>([]);
   const [activePersona, setActivePersona] = useState<Persona | undefined>();
   const [activeCast, setActiveCast] = useState<Persona[]>([]);
-  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
-  const [detail, setDetail] = useState<DetailState>({ open: false });
-  const [personaKnowledge, setPersonaKnowledge] = useState<PersonaKnowledge | null>(null);
-  const [knowledgeBusy, setKnowledgeBusy] = useState(false);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(true);
   const [lastKnowledgeHits, setLastKnowledgeHits] = useState<number | null>(null);
-  const [userKnowledge, setUserKnowledge] = useState<PersonaKnowledge | null>(null);
-  const [userKnowledgeOpen, setUserKnowledgeOpen] = useState(false);
-  const [userKnowledgeBusy, setUserKnowledgeBusy] = useState(false);
   const [activeMemory, setActiveMemory] = useState<string | null>(null);
   const [memoryState, setMemoryState] = useState<"idle" | "generating" | "error">("idle");
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -182,6 +167,39 @@ export default function HomePage() {
     speakVoice,
   } = voice;
 
+  const persona = usePersonaState({ onUnauthenticated: handleSessionExpired });
+  const {
+    personas,
+    favoriteIds,
+    detail,
+    setDetail,
+    personaKnowledge,
+    setPersonaKnowledge,
+    knowledgeBusy,
+    userKnowledge,
+    userKnowledgeOpen,
+    setUserKnowledgeOpen,
+    userKnowledgeBusy,
+    loadPersonas,
+    loadFavorites,
+    loadUserKnowledge,
+    toggleFavorite,
+    openUserKnowledgeDrawer,
+    addUserKnowledgeText,
+    addUserKnowledgeFile,
+    deleteUserKnowledgeDocument,
+    openPersonaDetail,
+    loadPersonaKnowledge,
+    addKnowledgeText,
+    addKnowledgeFile,
+    deleteKnowledgeDocument,
+    uploadInitialKnowledge,
+    savePersonaEdit,
+    createLibraryPersona,
+    duplicatePersona,
+    deleteLibraryPersona,
+  } = persona;
+
   function handleImageFile(file: File) {
     const message = handleImageFileAction(file);
     if (message) setError(message);
@@ -260,30 +278,6 @@ export default function HomePage() {
     }
   }
 
-  async function loadPersonas() {
-    try {
-      setPersonas(await personaActions.listPersonas());
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
-  async function loadUserKnowledge() {
-    try {
-      setUserKnowledge(await knowledgeActions.getUserKnowledge());
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
-  async function loadFavorites() {
-    try {
-      setFavoriteIds(await getFavoritePersonaIds());
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
   async function openTools(tab: "ledger" | "keys" | "quota" | "voice" | "media") {
     setToolsTab(tab);
     setToolsOpen(true);
@@ -291,21 +285,6 @@ export default function HomePage() {
     if (tab === "keys") await loadKeys();
     if (tab === "voice") await loadVoiceSettings();
     if (tab === "media") await loadMediaSettings();
-  }
-
-  async function toggleFavorite(personaId: string) {
-    const next = favoriteIds.includes(personaId)
-      ? favoriteIds.filter((id) => id !== personaId)
-      : [...favoriteIds, personaId];
-    setFavoriteIds(next);
-    try {
-      await setFavoritePersonaIds(next);
-    } catch (error) {
-      handleConversationError(error);
-      setFavoriteIds((current) =>
-        current.includes(personaId) ? current.filter((id) => id !== personaId) : [...current, personaId],
-      );
-    }
   }
 
   async function openConversation(id: string) {
@@ -337,47 +316,6 @@ export default function HomePage() {
       setMemoryState("idle");
     } catch (error) {
       handleConversationError(error);
-    }
-  }
-
-  function openUserKnowledgeDrawer() {
-    setUserKnowledgeOpen(true);
-    void loadUserKnowledge();
-  }
-
-  async function addUserKnowledgeText(name: string, text: string) {
-    setUserKnowledgeBusy(true);
-    try {
-      await knowledgeActions.addUserKnowledgeText(name, text);
-      await loadUserKnowledge();
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) throw new Error(message);
-    } finally {
-      setUserKnowledgeBusy(false);
-    }
-  }
-
-  async function addUserKnowledgeFile(file: File) {
-    setUserKnowledgeBusy(true);
-    try {
-      await knowledgeActions.addUserKnowledgeFile(file);
-      await loadUserKnowledge();
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) throw new Error(message);
-    } finally {
-      setUserKnowledgeBusy(false);
-    }
-  }
-
-  async function deleteUserKnowledgeDocument(documentId: string) {
-    try {
-      await knowledgeActions.deleteUserKnowledgeDocument(documentId);
-      await loadUserKnowledge();
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) throw new Error(message);
     }
   }
 
@@ -430,13 +368,6 @@ export default function HomePage() {
     setView("chat");
   }
 
-  async function uploadInitialKnowledge(personaId: string, knowledge: KnowledgeDraft) {
-    if (knowledge.file) await addKnowledgeFile(personaId, knowledge.file);
-    if (knowledge.text.trim()) {
-      await addKnowledgeText(personaId, knowledge.name.trim() || "初始资料", knowledge.text);
-    }
-  }
-
   async function startRoleplayConversation(
     persona: Persona,
     saveToLibrary: boolean,
@@ -444,8 +375,7 @@ export default function HomePage() {
   ) {
     let target = persona;
     if (saveToLibrary) {
-      target = await personaActions.createPersona(persona);
-      await loadPersonas();
+      target = await createLibraryPersona(persona);
     }
     const conversation = await createConversation({ mode: "roleplay", persona: target });
     if (knowledge) {
@@ -657,117 +587,6 @@ export default function HomePage() {
       const message = handleConversationError(error);
       if (message) setError(message);
     }
-  }
-
-  function openPersonaDetail(persona: Persona, mode: "view" | "edit" | "create" = "view") {
-    setDetail({ open: true, persona, mode });
-    if (mode === "view") void loadPersonaKnowledge(persona.id);
-  }
-
-  async function loadPersonaKnowledge(personaId: string) {
-    try {
-      setPersonaKnowledge(await knowledgeActions.getPersonaKnowledge(personaId));
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
-  async function addKnowledgeText(personaId: string, name: string, text: string) {
-    setKnowledgeBusy(true);
-    try {
-      await knowledgeActions.addPersonaKnowledgeText(personaId, name, text);
-      await loadPersonaKnowledge(personaId);
-    } catch (error) {
-      const message = handleConversationError(error);
-      throw new Error(message ?? "登录会话已失效，请重新登录。");
-    } finally {
-      setKnowledgeBusy(false);
-    }
-  }
-
-  async function addKnowledgeFile(personaId: string, file: File) {
-    setKnowledgeBusy(true);
-    try {
-      await knowledgeActions.addPersonaKnowledgeFile(personaId, file);
-      await loadPersonaKnowledge(personaId);
-    } catch (error) {
-      const message = handleConversationError(error);
-      throw new Error(message ?? "登录会话已失效，请重新登录。");
-    } finally {
-      setKnowledgeBusy(false);
-    }
-  }
-
-  async function deleteKnowledgeDocument(documentId: string) {
-    const personaId = detail.open && detail.persona ? detail.persona.id : "";
-    try {
-      await knowledgeActions.deletePersonaKnowledgeDocument(personaId, documentId);
-      if (personaId) await loadPersonaKnowledge(personaId);
-    } catch (error) {
-      const message = handleConversationError(error);
-      throw new Error(message ?? "删除资料失败。");
-    }
-  }
-
-  async function savePersonaEdit(id: string, input: PersonaInput) {
-    try {
-      const updated = await personaActions.updatePersona(id, input);
-      setPersonas((current) => current.map((persona) => (persona.id === id ? updated : persona)));
-      setDetail({ open: true, persona: updated, mode: "view" });
-    } catch (error) {
-      const message = handleConversationError(error);
-      throw new Error(message ?? "保存角色失败。");
-    }
-  }
-
-  async function createLibraryPersona(input: PersonaInput): Promise<Persona> {
-    try {
-      const persona = await personaActions.createPersona(input);
-      setPersonas((current) => [...current, persona]);
-      void loadPersonaKnowledge(persona.id);
-      return persona;
-    } catch (error) {
-      const message = handleConversationError(error);
-      throw new Error(message ?? "创建角色失败。");
-    }
-  }
-
-  async function duplicatePersona(persona: Persona) {
-    try {
-      const created = await personaActions.createPersona({
-        name: `${persona.name}（副本）`.slice(0, 32),
-        avatar: persona.avatar,
-        cover: persona.cover,
-        description: persona.description,
-        firstMessage: persona.firstMessage,
-        style: persona.style,
-        world: persona.world,
-        scenario: persona.scenario,
-        plot: persona.plot,
-        examples: persona.examples,
-        tags: persona.tags,
-      });
-      setPersonas((current) => [...current, created]);
-      setDetail({ open: true, persona: created, mode: "view" });
-      void loadPersonaKnowledge(created.id);
-    } catch (error) {
-      const message = handleConversationError(error);
-      throw new Error(message ?? "复制角色失败。");
-    }
-  }
-
-  async function deleteLibraryPersona(id: string) {
-    if (!window.confirm("删除这个角色？已经开始的会话不受影响。")) return;
-    try {
-      await personaActions.deletePersona(id);
-      await knowledgeActions.deletePersonaKnowledge(id);
-    } catch (error) {
-      const message = handleConversationError(error);
-      throw new Error(message ?? "删除角色失败。");
-    }
-    setPersonas((current) => current.filter((persona) => persona.id !== id));
-    setPersonaKnowledge(null);
-    setDetail({ open: false });
   }
 
   useEffect(() => {
