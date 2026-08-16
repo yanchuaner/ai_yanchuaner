@@ -1,5 +1,7 @@
 # YanCore Subject Grant 客户端契约
 
+> 本文保留首个客户端实现的历史契约。生态级主体语义见工作区 `docs/contracts.md`，当前 AI 适配边界见 [api-platform-integration.md](api-platform-integration.md)。
+
 更新日期：2026-07-19
 状态：`AI_WEB_BFF_IMPLEMENTED`
 
