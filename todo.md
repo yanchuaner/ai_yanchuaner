@@ -1,7 +1,7 @@
 # 燕中 AI 开发清单
 
 更新日期：2026-08-16  
-当前执行项：`AI-22`  
+当前执行项：`AI-23`  
 适用仓库：`ai_yanchuaner`
 
 本文只维护燕中 AI 当前可执行的开发队列。生态阶段以 `../docs/燕中生态项目关系.txt` 为准，系统边界以 `../docs/architecture.md` 和 `../docs/contracts.md` 为准，本仓实现方向以 `docs/architecture.md` 为准。
@@ -113,11 +113,13 @@
 
 依赖：`AI-21`。
 
-- [ ] 提取 Persona、World、用户/角色知识、收藏和记忆的 client、action 与状态边界。
-- [ ] 所有 owner、404、409 和删除语义在 action/adapter 层统一处理。
-- [ ] 保持导入导出来源字段、角色/世界快照和现有数据兼容。
+- [x] 提取 Persona、World、用户/角色知识、收藏和记忆的 client、action 与状态边界。
+- [x] 所有 owner、404、409 和删除语义在 action/adapter 层统一处理。
+- [x] 保持导入导出来源字段、角色/世界快照和现有数据兼容。
 
 完成定义：角色、世界、RAG 和记忆功能无需在主页面新增网络分支；相关错误有明确用户状态。
+
+2026-08-16 已合入：新增 `action-http.ts`、`persona-actions.ts`、`world-actions.ts`、`knowledge-actions.ts`、`preferences-actions.ts`；角色/世界/知识/收藏/导入导出的直接 fetch 全部移出页面与组件。门禁：typecheck、150 项测试、构建、契约测试、依赖审计全部通过；生产浏览器冒烟验证角色库与世界库正常加载。
 
 ### AI-23 提取 BYOK 媒体与语音 actions
 
