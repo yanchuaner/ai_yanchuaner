@@ -23,6 +23,7 @@ import type { Persona } from "@/lib/personas";
 import { resolveRequestIds, type RequestIdBundle } from "@/lib/request-ids";
 import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
 import { ChatV1Error, runChatV1 } from "@/workflows/chat-v1";
+import { runRoleplayV1 } from "@/workflows/roleplay-v1";
 
 export type ChatHandlerConfig = {
   publicUrl: URL;
@@ -76,6 +77,44 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
         runId: `run_${ids.traceId}`,
         model: parsed.model,
         messages: parsed.messages,
+        accessKey: session.credential.accessKey,
+        apiBaseUrl: config.yanCoreApiBaseUrl,
+        signal: request.signal,
+        traceId: ids.traceId,
+        clientRequestId: ids.clientRequestId,
+        onEvent: () => {},
+        fetcher,
+      });
+    } catch (error) {
+      if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
+        const revoked = NextResponse.json(
+          { error: error.message, code: "SESSION_REVOKED" },
+          { status: 401 },
+        );
+        revoked.cookies.set(SESSION_COOKIE, "", cookieOptions(config.publicUrl, 0));
+        return revoked;
+      }
+      return NextResponse.json(
+        { error: error instanceof ChatV1Error ? error.message : "模型服务暂时不可用。" },
+        { status: error instanceof ChatV1Error ? error.status : 502 },
+      );
+    }
+  }
+  if (conversationDetail?.mode === "roleplay" && conversationDetail.persona) {
+    const query = [...parsed.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+    try {
+      return await runRoleplayV1({
+        runId: `run_${ids.traceId}`,
+        conversationId: conversationDetail.id,
+        userId: session.subject.userId,
+        persona: conversationDetail.persona,
+        world: conversationDetail.world,
+        history: conversationDetail.messages
+          .filter((message) => message.role === "user" || message.role === "assistant")
+          .map((message) => ({ role: message.role, content: message.content })),
+        query,
+        model: parsed.model,
+        embeddingModel: resolveEmbeddingModel(session),
         accessKey: session.credential.accessKey,
         apiBaseUrl: config.yanCoreApiBaseUrl,
         signal: request.signal,
