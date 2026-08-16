@@ -26,6 +26,21 @@ import { WorldLibrary } from "@/components/world-library";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
 import { containsOtherSpeakerSpeech, createSpeakerPrefixStripper } from "@/lib/group-speech";
 import { createClientRequestId, createTraceId } from "@/lib/request-ids";
+import {
+  AccountActionError,
+  createAccountKey,
+  grantQuota,
+  listAccountKeys,
+  loadAccountBalance,
+  loadAccountLedger,
+  loadAccountSession,
+  logout as logoutAccount,
+  revokeAccountKey,
+  type AccountApiKey,
+  type AccountLedgerEntry,
+  type AccountQuotaInput,
+  type AccountSession,
+} from "@/lib/account";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
   AppView,
@@ -37,39 +52,15 @@ import type {
 
 type SessionState =
   | { status: "loading" }
-  | { status: "anonymous" }
+  | { status: "anonymous"; message?: string }
   | {
       status: "authenticated";
-      identity: { name: string; role: string };
-      subject: { userId: number; scopes: string; audience: string };
-      models: string[];
-      sessionQuotaUnits: number;
-      expiresAt: number;
+      identity: AccountSession["identity"];
+      subject: AccountSession["subject"];
+      models: AccountSession["models"];
+      sessionQuotaUnits: AccountSession["sessionQuotaUnits"];
+      expiresAt: AccountSession["expiresAt"];
     };
-
-type LedgerEntry = {
-  id: number;
-  entry_type: string;
-  funding_source: string;
-  amount: number;
-  balance_after: number;
-  reason: string;
-  request_id: string;
-  created_at: number;
-};
-
-type ApiKeyItem = {
-  id: number;
-  name: string;
-  key: string;
-  status: number;
-  model_limits_enabled: boolean;
-  model_limits: string;
-  remain_quota: number;
-  unlimited_quota: boolean;
-  expired_time: number;
-  created_time: number;
-};
 
 type VoiceSettingsView = {
   asr: { baseUrl: string; model: string } | null;
@@ -110,12 +101,13 @@ export default function HomePage() {
   const [userKnowledgeBusy, setUserKnowledgeBusy] = useState(false);
   const [activeMemory, setActiveMemory] = useState<string | null>(null);
   const [memoryState, setMemoryState] = useState<"idle" | "generating" | "error">("idle");
-  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [ledgerEntries, setLedgerEntries] = useState<AccountLedgerEntry[]>([]);
   const [ledgerTotal, setLedgerTotal] = useState(0);
+  const [ledgerError, setLedgerError] = useState("");
   const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
   const [quotaResult, setQuotaResult] = useState("");
   const [quotaError, setQuotaError] = useState("");
-  const [keys, setKeys] = useState<ApiKeyItem[]>([]);
+  const [keys, setKeys] = useState<AccountApiKey[]>([]);
   const [keyForm, setKeyForm] = useState({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
   const [createdKey, setCreatedKey] = useState("");
   const [keysError, setKeysError] = useState("");
@@ -173,14 +165,23 @@ export default function HomePage() {
     setPending(false);
   }
 
+  function handleAccountError(error: unknown): string | null {
+    if (error instanceof AccountActionError) {
+      if (error.code === "unauthenticated") {
+        handleSessionExpired();
+        return null;
+      }
+      return error.message;
+    }
+    return error instanceof Error ? error.message : "操作失败。";
+  }
+
   async function loadBalance() {
     try {
-      const response = await fetch("/api/me/balance", { cache: "no-store" });
-      if (response.ok) {
-        const body = await response.json();
-        setBalanceUnits(typeof body.balanceUnits === "number" ? body.balanceUnits : null);
-      }
-    } catch {
+      const account = await loadAccountBalance();
+      setBalanceUnits(account.balanceUnits);
+    } catch (error) {
+      handleAccountError(error);
       setBalanceUnits(null);
     }
   }
@@ -259,29 +260,36 @@ export default function HomePage() {
 
   async function loadLedger() {
     try {
-      const response = await fetch("/api/me/ledger?page=1&pageSize=20", { cache: "no-store" });
-      if (response.ok) {
-        const body = await response.json();
-        setLedgerEntries(Array.isArray(body.entries) ? body.entries : []);
-        setLedgerTotal(typeof body.total === "number" ? body.total : 0);
-      }
-    } catch {}
+      const page = await loadAccountLedger();
+      setLedgerEntries(page.entries);
+      setLedgerTotal(page.total);
+      setLedgerError("");
+    } catch (error) {
+      setLedgerEntries([]);
+      setLedgerTotal(0);
+      const message = handleAccountError(error);
+      if (message) setLedgerError(message);
+    }
   }
 
   async function loadKeys() {
     try {
-      const response = await fetch("/api/me/keys", { cache: "no-store" });
-      if (response.ok) {
-        const body = await response.json();
-        setKeys(Array.isArray(body.keys) ? body.keys : []);
-      }
-    } catch {}
+      setKeys(await listAccountKeys());
+      setKeysError("");
+    } catch (error) {
+      setKeys([]);
+      const message = handleAccountError(error);
+      if (message) setKeysError(message);
+    }
   }
 
   async function openTools(tab: "ledger" | "keys" | "quota" | "voice" | "media") {
     setToolsTab(tab);
     setToolsOpen(true);
-    if (tab === "ledger") await loadLedger();
+    if (tab === "ledger") {
+      setLedgerError("");
+      await loadLedger();
+    }
     if (tab === "keys") await loadKeys();
     if (tab === "voice") await loadVoiceSettings();
     if (tab === "media") await loadMediaSettings();
@@ -1173,33 +1181,37 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    fetch("/api/session", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) return setSession({ status: "anonymous" });
-        const body = await response.json();
-        setSession({
-          status: "authenticated",
-          identity: body.identity,
-          subject: body.subject,
-          models: body.models,
-          sessionQuotaUnits: body.sessionQuotaUnits,
-          expiresAt: body.expiresAt,
-        });
-        setModel(body.models[0] ?? "");
-        void loadBalance();
-        void loadConversations();
-        void loadPersonas();
-        void loadFavorites();
-        void loadUserKnowledge();
-        void loadVoiceSettings();
-        void loadWorlds();
+    void loadAccountSession()
+      .then((result) => {
+        if (result.status === "authenticated") {
+          const { identity, subject, models, sessionQuotaUnits, expiresAt } = result.session;
+          setSession({ status: "authenticated", identity, subject, models, sessionQuotaUnits, expiresAt });
+          setModel(models[0] ?? "");
+          void loadBalance();
+          void loadConversations();
+          void loadPersonas();
+          void loadFavorites();
+          void loadUserKnowledge();
+          void loadVoiceSettings();
+          void loadWorlds();
+          return;
+        }
+        if (result.status === "unavailable") {
+          setSession({ status: "anonymous", message: result.message });
+          return;
+        }
+        setSession({ status: "anonymous" });
       })
       .catch(() => setSession({ status: "anonymous" }));
   }, []);
 
   async function logout() {
     abortRef.current?.abort();
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await logoutAccount();
+    } catch {
+      // 退出请求失败时也重置本地会话，避免页面停留在已退出状态。
+    }
     setSession({ status: "anonymous" });
     setMessages([]);
     setLatestMessageIds(new Set());
@@ -1678,6 +1690,11 @@ export default function HomePage() {
               使用主站账号登录
             </a>
           </div>
+          {session.message && (
+            <p className="request-error" role="alert">
+              {session.message}
+            </p>
+          )}
         </section>
       )}
 
@@ -1851,6 +1868,11 @@ export default function HomePage() {
         {toolsTab === "ledger" && (
           <section className="tool-section" aria-live="polite">
             <h2>额度流水（{ledgerTotal}）</h2>
+            {ledgerError && (
+              <p className="request-error" role="alert">
+                {ledgerError}
+              </p>
+            )}
             {ledgerEntries.length === 0 ? (
               <p className="status-line">暂无流水记录</p>
             ) : (
@@ -1860,12 +1882,12 @@ export default function HomePage() {
                     <span className="ledger-amount">{entry.amount > 0 ? `+${entry.amount}` : entry.amount}</span>
                     <span className="ledger-copy">
                       <strong>
-                        {entry.entry_type} · {entry.funding_source}
+                        {entry.entryType} · {entry.fundingSource}
                       </strong>
                       <small>{entry.reason || "—"}</small>
                       <small>
-                        {entry.request_id ? `request ${entry.request_id}` : ""} ·{" "}
-                        {new Date(entry.created_at * 1000).toLocaleString("zh-CN")}
+                        {entry.requestId ? `request ${entry.requestId}` : ""} ·{" "}
+                        {new Date(entry.createdAt * 1000).toLocaleString("zh-CN")}
                       </small>
                     </span>
                   </li>
@@ -1957,9 +1979,9 @@ export default function HomePage() {
                       {item.name || "未命名"} · {item.key}
                     </strong>
                     <small>
-                      {item.model_limits || "全部模型"} · 剩余 {item.remain_quota}
+                      {item.modelLimits || "全部模型"} · 剩余 {item.remainQuota}
                     </small>
-                    <small>有效期至 {new Date(item.expired_time * 1000).toLocaleString("zh-CN")}</small>
+                    <small>有效期至 {new Date(item.expiredTime * 1000).toLocaleString("zh-CN")}</small>
                   </span>
                   <button className="icon-action danger" type="button" onClick={() => deleteKey(item.id)} aria-label="删除 Key">
                     <Trash2 size={16} aria-hidden="true" />
@@ -2302,54 +2324,51 @@ export default function HomePage() {
     event.preventDefault();
     setKeysError("");
     setCreatedKey("");
-    const response = await fetch("/api/me/keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const result = await createAccountKey({
         name: keyForm.name,
-        models: keyForm.models.join(","),
+        models: keyForm.models,
         remainQuota: Number(keyForm.remainQuota),
-        expiredTime: Math.floor(Date.now() / 1000) + Number(keyForm.expiryDays) * 86400,
-      }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.key) {
-      setKeysError(body?.error || "Key 创建失败。");
-      return;
+        expiryDays: Number(keyForm.expiryDays),
+      });
+      setCreatedKey(result.key);
+      setKeyForm({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
+      await loadKeys();
+    } catch (error) {
+      const message = handleAccountError(error);
+      if (message) setKeysError(message);
     }
-    setCreatedKey(body.key);
-    setKeyForm({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
-    await loadKeys();
   }
 
   async function deleteKey(id: number) {
     if (!window.confirm("删除该 Key？使用它的请求将立即失效。")) return;
-    const response = await fetch(`/api/me/keys/${id}`, { method: "DELETE" });
-    if (response.ok) await loadKeys();
+    try {
+      await revokeAccountKey(id);
+      await loadKeys();
+    } catch (error) {
+      const message = handleAccountError(error);
+      if (message) setKeysError(message);
+    }
   }
 
   async function submitQuota(event: FormEvent) {
     event.preventDefault();
     setQuotaResult("");
     setQuotaError("");
-    const response = await fetch("/api/admin/quota", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const result = await grantQuota({
         userId: Number(quotaForm.userId),
-        action: quotaForm.action,
+        action: quotaForm.action as AccountQuotaInput["action"],
         amount: Number(quotaForm.amount),
         reason: quotaForm.reason,
         reference: quotaForm.reference,
-      }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.balanceAfter) {
-      setQuotaError(body?.error || "额度发放失败。");
-      return;
+      });
+      setQuotaResult(`发放成功，最新余额 ${result.balanceAfter}`);
+      setQuotaForm((current) => ({ ...current, userId: "", amount: "", reference: "" }));
+      void loadBalance();
+    } catch (error) {
+      const message = handleAccountError(error);
+      if (message) setQuotaError(message);
     }
-    setQuotaResult(`发放成功，最新余额 ${body.balanceAfter}`);
-    setQuotaForm((current) => ({ ...current, userId: "", amount: "", reference: "" }));
-    void loadBalance();
   }
 }
