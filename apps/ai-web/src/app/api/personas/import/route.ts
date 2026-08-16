@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPersona } from "@/lib/persona-library";
+import { createFilePersonaRepository } from "@/lib/persona-file-repository";
 import { charaCardV3ToPersonaInput } from "@/lib/chara-card";
 import { requireAiSession } from "@/lib/session-guard";
 
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       : undefined;
   try {
     const input = charaCardV3ToPersonaInput(card);
-    const persona = await createPersona(guard.session.subject.userId, input);
+    const persona = await createFilePersonaRepository().create(guard.session.subject.userId, input);
     return NextResponse.json({ persona }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
