@@ -65,6 +65,9 @@ import * as personaActions from "@/lib/persona-actions";
 import * as worldActions from "@/lib/world-actions";
 import * as knowledgeActions from "@/lib/knowledge-actions";
 import { getFavoritePersonaIds, setFavoritePersonaIds } from "@/lib/preferences-actions";
+import * as mediaActions from "@/lib/media-actions";
+import * as voiceActions from "@/lib/voice-actions";
+import type { VoiceSettingsInput, VoiceSettingsView } from "@/lib/voice-actions";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
   AppView,
@@ -85,12 +88,6 @@ type SessionState =
       sessionQuotaUnits: AccountSession["sessionQuotaUnits"];
       expiresAt: AccountSession["expiresAt"];
     };
-
-type VoiceSettingsView = {
-  asr: { baseUrl: string; model: string } | null;
-  tts: { baseUrl: string; model: string; voice?: string } | null;
-  updatedAt: number;
-};
 
 type DetailState =
   | { open: false; persona?: undefined; mode?: never }
@@ -309,14 +306,7 @@ export default function HomePage() {
 
   async function loadVoiceSettings() {
     try {
-      const response = await fetch("/api/me/voice", { cache: "no-store" });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      if (!response.ok) return;
-      const body = await response.json();
-      const settings = body.settings as VoiceSettingsView;
+      const settings = await voiceActions.getVoiceSettings();
       setVoiceSettings(settings);
       setVoiceForm({
         asrBaseUrl: settings.asr?.baseUrl ?? "https://api.siliconflow.cn/v1",
@@ -327,14 +317,16 @@ export default function HomePage() {
         ttsVoice: settings.tts?.voice ?? "FunAudioLLM/CosyVoice2-0.5B:alex",
         ttsKey: "",
       });
-    } catch {}
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function saveVoiceSettings() {
     setVoiceBusy(true);
     setVoiceError("");
     setVoiceResult("");
-    const payload: { asr?: unknown; tts?: unknown } = {};
+    const payload: VoiceSettingsInput = {};
     if (voiceForm.asrBaseUrl.trim() || voiceForm.asrModel.trim() || voiceForm.asrKey) {
       payload.asr = {
         baseUrl: voiceForm.asrBaseUrl.trim(),
@@ -351,22 +343,13 @@ export default function HomePage() {
       };
     }
     try {
-      const response = await fetch("/api/me/voice", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "保存语音设置失败。");
-      setVoiceSettings(body.settings);
+      const settings = await voiceActions.updateVoiceSettings(payload);
+      setVoiceSettings(settings);
       setVoiceResult("语音设置已保存。");
       setVoiceForm((current) => ({ ...current, asrKey: "", ttsKey: "" }));
     } catch (reason) {
-      setVoiceError(reason instanceof Error ? reason.message : "保存语音设置失败。");
+      const message = handleConversationError(reason);
+      setVoiceError(message ?? "保存语音设置失败。");
     } finally {
       setVoiceBusy(false);
     }
@@ -377,18 +360,8 @@ export default function HomePage() {
     setVoiceError("");
     setVoiceResult("");
     try {
-      const response = await fetch("/api/me/voice", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [section]: null }),
-      });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "清除失败。");
-      setVoiceSettings(body.settings);
+      const settings = await voiceActions.clearVoiceSection(section);
+      setVoiceSettings(settings);
       setVoiceResult("语音设置已清除。");
       setVoiceForm((current) => ({
         ...current,
@@ -397,7 +370,8 @@ export default function HomePage() {
           : { ttsBaseUrl: "", ttsModel: "", ttsVoice: "", ttsKey: "" }),
       }));
     } catch (reason) {
-      setVoiceError(reason instanceof Error ? reason.message : "清除失败。");
+      const message = handleConversationError(reason);
+      setVoiceError(message ?? "清除失败。");
     } finally {
       setVoiceBusy(false);
     }
@@ -444,21 +418,17 @@ export default function HomePage() {
 
   async function loadMediaSettings() {
     try {
-      const response = await fetch("/api/me/media", { cache: "no-store" });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      if (!response.ok) return;
-      const body = await response.json();
-      setMediaSettings(body.settings);
+      const settings = await mediaActions.getMediaSettings();
+      setMediaSettings(settings);
       setMediaForm({
-        baseUrl: body.settings?.baseUrl ?? "https://api.siliconflow.cn/v1",
-        visionModel: body.settings?.visionModel ?? "Qwen/Qwen2.5-VL-72B-Instruct",
-        imageModel: body.settings?.imageModel ?? "black-forest-labs/FLUX.1-schnell",
+        baseUrl: settings?.baseUrl ?? "https://api.siliconflow.cn/v1",
+        visionModel: settings?.visionModel ?? "Qwen/Qwen2.5-VL-72B-Instruct",
+        imageModel: settings?.imageModel ?? "black-forest-labs/FLUX.1-schnell",
         apiKey: "",
       });
-    } catch {}
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function saveMediaSettings() {
@@ -466,37 +436,31 @@ export default function HomePage() {
     setMediaError("");
     setMediaResult("");
     try {
-      const response = await fetch("/api/me/media", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseUrl: mediaForm.baseUrl.trim(),
-          visionModel: mediaForm.visionModel.trim(),
-          imageModel: mediaForm.imageModel.trim(),
-          apiKey: mediaForm.apiKey || undefined,
-        }),
+      const settings = await mediaActions.updateMediaSettings({
+        baseUrl: mediaForm.baseUrl.trim(),
+        visionModel: mediaForm.visionModel.trim(),
+        imageModel: mediaForm.imageModel.trim(),
+        apiKey: mediaForm.apiKey || undefined,
       });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "保存媒体设置失败。");
-      setMediaSettings(body.settings);
+      setMediaSettings(settings);
       setMediaResult("媒体设置已保存。");
       setMediaForm((current) => ({ ...current, apiKey: "" }));
     } catch (reason) {
-      setMediaError(reason instanceof Error ? reason.message : "保存媒体设置失败。");
+      const message = handleConversationError(reason);
+      setMediaError(message ?? "保存媒体设置失败。");
     } finally {
       setMediaBusy(false);
     }
   }
 
   async function clearMedia() {
-    const response = await fetch("/api/me/media", { method: "DELETE" });
-    if (response.ok) {
+    try {
+      await mediaActions.clearMediaSettings();
       setMediaSettings(null);
       setMediaResult("媒体设置已清除。");
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) setMediaError(message);
     }
   }
 
@@ -526,22 +490,12 @@ export default function HomePage() {
     setImageBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/me/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: content }),
-      });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "图片生成失败。");
+      const image = await mediaActions.generateImage(content);
       const message = {
         id: `image-${crypto.randomUUID()}`,
         role: "assistant" as const,
         content,
-        imageUrl: body.image,
+        imageUrl: image,
       };
       setMessages((current) => [...current, message]);
       markLatest(message.id);
@@ -550,23 +504,15 @@ export default function HomePage() {
         await appendConversationMessage(conversationId, message).catch(() => {});
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "图片生成失败。");
+      const message = handleConversationError(reason);
+      setError(message ?? "图片生成失败。");
     } finally {
       setImageBusy(false);
     }
   }
 
   async function transcribeVoice(file: File): Promise<string> {
-    const form = new FormData();
-    form.append("file", file);
-    const response = await fetch("/api/me/voice/asr", { method: "POST", body: form });
-    if (response.status === 401) {
-      handleSessionExpired();
-      throw new Error("登录会话已失效，请重新登录。");
-    }
-    const body = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.error || "语音转文字失败。");
-    return body.text;
+    return voiceActions.transcribeVoice(file);
   }
 
   async function speakVoice(messageId: string, text: string) {
@@ -577,21 +523,8 @@ export default function HomePage() {
       const audioContext = audioContextRef.current ?? new AudioContext();
       audioContextRef.current = audioContext;
       if (audioContext.state === "suspended") await audioContext.resume();
-      const response = await fetch("/api/me/voice/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error || "语音朗读失败。");
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      const decoded = await audioContext.decodeAudioData(arrayBuffer);
+      const { audio } = await voiceActions.synthesizeSpeech(text);
+      const decoded = await audioContext.decodeAudioData(audio);
       const source = audioContext.createBufferSource();
       source.buffer = decoded;
       source.connect(audioContext.destination);
@@ -1131,25 +1064,16 @@ export default function HomePage() {
     let finalContent = content;
     if (pendingImage) {
       try {
-        const visionResponse = await fetch("/api/me/vision", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image: pendingImage,
-            prompt: "结合当前对话，用 100 字以内简要描述这张图片的内容。",
-          }),
-        });
-        if (visionResponse.status === 401) {
-          handleSessionExpired();
-          return;
-        }
-        const visionBody = await visionResponse.json().catch(() => null);
-        if (!visionResponse.ok) throw new Error(visionBody?.error || "图片理解失败。");
+        const visionText = await mediaActions.describeImage(
+          pendingImage,
+          "结合当前对话，用 100 字以内简要描述这张图片的内容。",
+        );
         finalContent = content
-          ? `${content}\n\n（用户附带了一张图片：${visionBody.text}）`
-          : `（用户发来一张图片：${visionBody.text}）`;
+          ? `${content}\n\n（用户附带了一张图片：${visionText}）`
+          : `（用户发来一张图片：${visionText}）`;
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "图片理解失败。");
+        const message = handleConversationError(reason);
+        setError(message ?? "图片理解失败。");
         return;
       }
     }
