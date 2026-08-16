@@ -5,6 +5,7 @@ import { capabilityRegistry, CapabilityRegistryError } from "@/capabilities/regi
 export type CapabilityAdapter = {
   resolveModel(capabilityId: string): string;
   resolveEmbeddingModel?(): string | null;
+  resolveKnowledgeThreshold?(): number;
 };
 
 export function createCapabilityAdapter(options?: {
@@ -20,6 +21,10 @@ export function createCapabilityAdapter(options?: {
     resolveEmbeddingModel() {
       if (options?.embeddingModel !== undefined) return options.embeddingModel;
       return process.env.AI_WEB_EMBEDDING_MODEL?.trim() || "BAAI/bge-m3";
+    },
+    resolveKnowledgeThreshold() {
+      const parsed = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD);
+      return Number.isFinite(parsed) ? parsed : 0.3;
     },
   };
 }

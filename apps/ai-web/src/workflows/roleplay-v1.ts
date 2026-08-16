@@ -88,12 +88,11 @@ export async function runRoleplayV1(input: RoleplayV1Input): Promise<Response> {
                 [input.query],
                 input.fetcher,
               );
-              const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
-              const safeThreshold = Number.isFinite(threshold) ? threshold : 0.3;
+              const threshold = input.adapter.resolveKnowledgeThreshold?.() ?? 0.3;
               const repository = createFileKnowledgeRepository();
               const [personaHits, userHits] = await Promise.all([
-                repository.search(input.userId, input.persona.id, embedded.vectors[0], 4, safeThreshold),
-                repository.search(input.userId, null, embedded.vectors[0], 2, safeThreshold),
+                repository.search(input.userId, input.persona.id, embedded.vectors[0], 4, threshold),
+                repository.search(input.userId, null, embedded.vectors[0], 2, threshold),
               ]);
               const contribution = knowledgeContributor([...personaHits, ...userHits].slice(0, 4));
               if (contribution) {
