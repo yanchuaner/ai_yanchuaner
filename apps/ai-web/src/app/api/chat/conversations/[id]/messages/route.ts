@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appendMessage, type StoredMessage } from "@/lib/conversations";
+import { type StoredMessage } from "@/lib/conversations";
+import { createFileConversationRepository } from "@/lib/conversation-file-repository";
 import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         : undefined,
   };
   try {
-    const conversation = await appendMessage(guard.session.subject.userId, id, message);
+    const conversation = await createFileConversationRepository().appendMessage(guard.session.subject.userId, id, message);
     return NextResponse.json({ conversation });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : "";

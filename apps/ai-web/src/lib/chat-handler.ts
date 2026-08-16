@@ -9,10 +9,10 @@ import {
 import { requestEmbeddings } from "@/lib/embedding";
 import { resolveEmbeddingModel } from "@/lib/knowledge-embedding";
 import {
-  getConversationDetail,
   type ConversationDetail,
   type StoredMessage,
 } from "@/lib/conversations";
+import { createFileConversationRepository } from "@/lib/conversation-file-repository";
 import {
   searchPersonaKnowledge,
   searchUserKnowledge,
@@ -67,7 +67,10 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   let conversationDetail: ConversationDetail | null = null;
   if (typeof candidate?.conversationId === "string") {
     try {
-      conversationDetail = await getConversationDetail(session.subject.userId, candidate.conversationId);
+      conversationDetail = await createFileConversationRepository().getDetail(
+        session.subject.userId,
+        candidate.conversationId,
+      );
     } catch {
       // 会话不存在时退回普通对话，不阻断请求。
     }

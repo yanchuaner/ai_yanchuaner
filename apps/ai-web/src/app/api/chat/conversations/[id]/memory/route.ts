@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiWebConfig } from "@/lib/config";
-import { getConversationDetail, type ConversationDetail } from "@/lib/conversations";
+import { type ConversationDetail } from "@/lib/conversations";
+import { createFileConversationRepository } from "@/lib/conversation-file-repository";
 import {
   clearConversationMemories,
   listConversationMemories,
@@ -22,7 +23,7 @@ async function resolveMemoryConversation(
   const guard: SessionGuardResult = requireAiSession(request);
   if (guard.response) return { response: guard.response };
   try {
-    const detail = await getConversationDetail(guard.session.subject.userId, id);
+    const detail = await createFileConversationRepository().getDetail(guard.session.subject.userId, id);
     if (detail.mode === "roleplay" || detail.mode === "group") {
       return { session: guard.session, detail };
     }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteConversation, getConversationDetail, updateConversation } from "@/lib/conversations";
+import { createFileConversationRepository } from "@/lib/conversation-file-repository";
 import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (guard.response) return guard.response;
   const { id } = await params;
   try {
-    const conversation = await getConversationDetail(guard.session.subject.userId, id);
+    const conversation = await createFileConversationRepository().getDetail(guard.session.subject.userId, id);
     return NextResponse.json(conversation);
   } catch {
     return NextResponse.json({ error: "会话不存在。" }, { status: 404 });
@@ -21,7 +21,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 	if (guard.response) return guard.response;
 	const { id } = await params;
 	try {
-		await deleteConversation(guard.session.subject.userId, id);
+		await createFileConversationRepository().delete(guard.session.subject.userId, id);
 		return NextResponse.json({ success: true });
 	} catch {
 		return NextResponse.json({ error: "会话不存在。" }, { status: 404 });
@@ -53,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 		patch.archived = candidate.archived;
 	}
 	try {
-		const conversation = await updateConversation(guard.session.subject.userId, id, patch);
+		const conversation = await createFileConversationRepository().update(guard.session.subject.userId, id, patch);
 		return NextResponse.json({ conversation });
 	} catch {
 		return NextResponse.json({ error: "会话不存在。" }, { status: 404 });

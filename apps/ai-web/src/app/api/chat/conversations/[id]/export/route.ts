@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getConversationDetail } from "@/lib/conversations";
+import { createFileConversationRepository } from "@/lib/conversation-file-repository";
 import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 	if (guard.response) return guard.response;
 	const { id } = await params;
 	try {
-		const conversation = await getConversationDetail(guard.session.subject.userId, id);
+		const conversation = await createFileConversationRepository().getDetail(guard.session.subject.userId, id);
 		return new NextResponse(JSON.stringify(conversation, null, 2), {
 			headers: {
 				"Content-Type": "application/json; charset=utf-8",
