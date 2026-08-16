@@ -1,7 +1,7 @@
 # 燕中 AI 开发清单
 
-更新日期：2026-08-14  
-当前执行项：`AI-12`  
+更新日期：2026-08-16  
+当前执行项：`AI-20`  
 适用仓库：`ai_yanchuaner`
 
 本文只维护燕中 AI 当前可执行的开发队列。生态阶段以 `../docs/燕中生态项目关系.txt` 为准，系统边界以 `../docs/architecture.md` 和 `../docs/contracts.md` 为准，本仓实现方向以 `docs/architecture.md` 为准。
@@ -74,12 +74,14 @@
 
 依赖：`AI-11`。
 
-- [ ] 在 Web 操作入口生成或接收 `client_request_id`，在 BFF 建立并传播 `trace_id`。
-- [ ] 保存网关返回的 `request_id`，流式响应、错误、工作流事件和账本入口使用同一组关联标识。
-- [ ] 客户端重试复用幂等标识；群聊每次付费调用拥有独立 `request_id` 并共享 `trace_id`。
-- [ ] 增加标识传播、缺失回退、重试和脱敏测试，不把主体信息编码进标识。
+- [x] 在 Web 操作入口生成或接收 `client_request_id`，在 BFF 建立并传播 `trace_id`。
+- [x] 保存网关返回的 `request_id`，流式响应、错误、工作流事件和账本入口使用同一组关联标识。
+- [x] 客户端重试复用幂等标识；群聊每次付费调用拥有独立 `request_id` 并共享 `trace_id`。
+- [x] 增加标识传播、缺失回退、重试和脱敏测试，不把主体信息编码进标识。
 
 完成定义：一次普通聊天和一次群聊可从 UI 操作关联到全部网关请求；日志和错误不泄漏正文或凭据。
+
+2026-08-16 已合入：前端生成 `client_request_id`/`trace_id`，BFF 解析并传播到网关，响应回传 `X-Trace-ID`/`X-Client-Request-ID`；消息保存 `traceId`；失败重试复用幂等标识；群聊各角色请求共享 `trace_id`、独立 `client_request_id`。门禁：typecheck、97 项测试、构建、契约测试全部通过，已部署。
 
 ## M2：拆分 Web 应用控制器
 
