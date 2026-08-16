@@ -18,6 +18,7 @@ services:
       AI_WEB_PUBLIC_URL: ${AI_WEB_PUBLIC_URL:-http://localhost:3002}
       AI_WEB_SESSION_SECRET: ${AI_WEB_SESSION_SECRET:-}
       AI_WEB_ALLOW_INSECURE_INTERNAL_HTTP: ${AI_WEB_ALLOW_INSECURE_INTERNAL_HTTP:-false}
+      AI_WEB_OBSERVABILITY_FILE: ${AI_WEB_OBSERVABILITY_FILE:-/data/observability/events.jsonl}
       YANCORE_OIDC_ISSUER: ${YANCORE_OIDC_ISSUER:-http://localhost:3000}
       YANCORE_OIDC_DISCOVERY_URL: ${YANCORE_OIDC_DISCOVERY_URL:-http://host.docker.internal:3000/api/oauth/.well-known/openid-configuration}
       YANCORE_OIDC_CLIENT_ID: ${YANCORE_OIDC_CLIENT_ID:-}
