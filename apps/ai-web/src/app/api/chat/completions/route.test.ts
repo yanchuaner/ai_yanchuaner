@@ -121,6 +121,76 @@ test("chat route keeps a model-service failure as a gateway error", async () => 
   assert.equal(response.status, 502);
 });
 
+test("chat route deduplicates the same client request id before forwarding", async () => {
+  let calls = 0;
+  const fetcher: typeof fetch = async () => {
+    calls += 1;
+    return new Response("data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
+  };
+  const clientRequestId = `client-dedupe-${crypto.randomUUID()}`;
+  const request = () =>
+    authenticatedRequest(
+      "/api/chat/completions",
+      { model: "deepseek-chat", messages: [{ role: "user", content: "hello" }] },
+      "https://ai.example.test",
+      ["deepseek-chat"],
+      { "x-client-request-id": clientRequestId },
+    );
+  const first = await handleChatCompletion(request(), config, fetcher);
+  assert.equal(first.status, 200);
+  const second = await handleChatCompletion(request(), config, fetcher);
+  assert.equal(second.status, 409);
+  const body = await second.json();
+  assert.equal(body.code, "DUPLICATE_REQUEST");
+  assert.equal(calls, 1);
+});
+
+test("chat route allows same client request id retry after an explicit gateway error", async () => {
+  let calls = 0;
+  const fetcher: typeof fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ error: "upstream down" }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const clientRequestId = `client-retry-${crypto.randomUUID()}`;
+  const request = () =>
+    authenticatedRequest(
+      "/api/chat/completions",
+      { model: "deepseek-chat", messages: [{ role: "user", content: "hello" }] },
+      "https://ai.example.test",
+      ["deepseek-chat"],
+      { "x-client-request-id": clientRequestId },
+    );
+  const first = await handleChatCompletion(request(), config, fetcher);
+  assert.equal(first.status, 502);
+  const second = await handleChatCompletion(request(), config, fetcher);
+  assert.equal(second.status, 502);
+  assert.equal(calls, 2);
+});
+
+test("chat route keeps unknown network outcome pending and blocks same key retry", async () => {
+  const fetcher: typeof fetch = async () => {
+    throw new TypeError("network down");
+  };
+  const clientRequestId = `client-unknown-${crypto.randomUUID()}`;
+  const request = () =>
+    authenticatedRequest(
+      "/api/chat/completions",
+      { model: "deepseek-chat", messages: [{ role: "user", content: "hello" }] },
+      "https://ai.example.test",
+      ["deepseek-chat"],
+      { "x-client-request-id": clientRequestId },
+    );
+  const first = await handleChatCompletion(request(), config, fetcher);
+  assert.equal(first.status, 502);
+  const second = await handleChatCompletion(request(), config, fetcher);
+  assert.equal(second.status, 409);
+  const body = await second.json();
+  assert.equal(body.code, "DUPLICATE_REQUEST");
+});
+
 test("chat route retrieves persona knowledge and injects it as context", async () => {
   await withDataDir(async () => {
     const persona = {
@@ -316,7 +386,7 @@ test("chat route schedules group speakers then streams each member independently
         },
         "https://ai.example.test",
         ["deepseek-chat", "BAAI/bge-m3"],
-        { "x-trace-id": "trace-g1", "x-client-request-id": "client-g1" },
+        { "x-trace-id": "trace-g1", "x-client-request-id": "client-schedule-g1" },
       ),
       config,
       fetcher,
@@ -342,7 +412,7 @@ test("chat route schedules group speakers then streams each member independently
     assert.match(scheduleBody.messages[0].content, /燕川中学/);
     assert.match(scheduleBody.messages[0].content, /转学生/);
     assert.equal(forwardedHeaders[0].get("x-trace-id"), "trace-g1");
-    assert.equal(forwardedHeaders[0].get("x-client-request-id"), "client-g1");
+    assert.equal(forwardedHeaders[0].get("x-client-request-id"), "client-schedule-g1");
     assert.equal(scheduleResponse.headers.get("x-trace-id"), "trace-g1");
 
     const speakerResponses: Response[] = [];

@@ -481,6 +481,10 @@ export function useConversationState(options: UseConversationStateOptions) {
         await runGroupTurn(targetConversationId, requestMessages, controller, traceId);
       } catch (reason) {
         const message = resolveActionError(reason, handleSessionExpired);
+        if (reason instanceof ChatActionError && reason.code === "duplicate") {
+          if (message) setError(message);
+          return;
+        }
         if (!controller.signal.aborted && message) {
           setError(message);
           setPrompt(content);
@@ -560,6 +564,10 @@ export function useConversationState(options: UseConversationStateOptions) {
       }
     } catch (reason) {
       const message = resolveActionError(reason, handleSessionExpired);
+      if (reason instanceof ChatActionError && reason.code === "duplicate") {
+        if (message) setError(message);
+        return;
+      }
       if (!controller.signal.aborted && message) {
         setError(message);
         setPrompt(content);

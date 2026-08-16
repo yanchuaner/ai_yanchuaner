@@ -1,7 +1,7 @@
 // 用户自配语音凭据：ASR/TTS 的 Base URL、模型与加密 Key。
 
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
-import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
+import { readJsonFile, userStorePath, withFileLock, writeJsonFile } from "@/lib/store";
 
 export type VoiceProviderSettings = {
   baseUrl: string;
@@ -80,42 +80,44 @@ export async function updateVoiceSettings(
   input: VoiceSettingsInput,
   allowInsecure: boolean,
 ): Promise<VoiceSettingsView> {
-  const store = await readStore(userId);
-  const apply = (
-    section: "asr" | "tts",
-    value:
-      | { baseUrl: string; model: string; voice?: string; apiKey?: string }
-      | null
-      | undefined,
-  ) => {
-    if (value === null) {
-      delete store[section];
-      return;
-    }
-    if (!value) return;
-    const invalid = validateVoiceProvider(value, allowInsecure);
-    if (invalid) throw new Error(invalid);
-    const existing = store[section];
-    const baseUrl = value.baseUrl.trim().replace(/\/+$/, "");
-    const model = value.model.trim();
-    const voice = value.voice?.trim() || existing?.voice;
-    const apiKey =
-      value.apiKey !== undefined && value.apiKey.length > 0
-        ? encryptSecret(value.apiKey.trim(), masterSecret)
-        : existing?.apiKeyEncrypted;
-    if (!apiKey) throw new Error("请填写 API Key，或留空保持不变。");
-    store[section] = {
-      baseUrl,
-      model,
-      voice: voice || undefined,
-      apiKeyEncrypted: apiKey,
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const apply = (
+      section: "asr" | "tts",
+      value:
+        | { baseUrl: string; model: string; voice?: string; apiKey?: string }
+        | null
+        | undefined,
+    ) => {
+      if (value === null) {
+        delete store[section];
+        return;
+      }
+      if (!value) return;
+      const invalid = validateVoiceProvider(value, allowInsecure);
+      if (invalid) throw new Error(invalid);
+      const existing = store[section];
+      const baseUrl = value.baseUrl.trim().replace(/\/+$/, "");
+      const model = value.model.trim();
+      const voice = value.voice?.trim() || existing?.voice;
+      const apiKey =
+        value.apiKey !== undefined && value.apiKey.length > 0
+          ? encryptSecret(value.apiKey.trim(), masterSecret)
+          : existing?.apiKeyEncrypted;
+      if (!apiKey) throw new Error("请填写 API Key，或留空保持不变。");
+      store[section] = {
+        baseUrl,
+        model,
+        voice: voice || undefined,
+        apiKeyEncrypted: apiKey,
+      };
     };
-  };
-  apply("asr", input.asr);
-  apply("tts", input.tts);
-  store.updatedAt = Date.now();
-  await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
-  return getVoiceSettings(userId);
+    apply("asr", input.asr);
+    apply("tts", input.tts);
+    store.updatedAt = Date.now();
+    await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
+    return getVoiceSettings(userId);
+  });
 }
 
 export async function getDecryptedVoiceProvider(

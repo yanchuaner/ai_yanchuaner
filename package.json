@@ -8,6 +8,8 @@
     "dev:fixture": "node scripts/local-openai-fixture.mjs",
     "build:ai-web": "pnpm --filter @yanchuaner/ai-web build",
     "test:ai-web": "pnpm --filter @yanchuaner/ai-web test",
+    "test:ops": "node --test scripts/backup-restore.test.mjs",
+    "disk:governance": "bash scripts/disk-governance.sh",
     "typecheck:ai-web": "pnpm --filter @yanchuaner/ai-web typecheck",
     "contracts:verify": "node scripts/contracts.mjs verify",
     "contracts:test": "node --test scripts/contracts.test.mjs",

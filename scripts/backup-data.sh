@@ -23,6 +23,7 @@ chmod 700 "$backup_dir"
 
 cleanup() {
   docker compose start open-webui >/dev/null 2>&1 || true
+  docker compose --profile yancore start ai-web >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -40,13 +41,18 @@ docker compose stop open-webui >/dev/null
 docker compose run --rm --no-deps -T --entrypoint sh open-webui \
   -c 'tar -C /app/backend/data -czf - .' > "$backup_dir/open-webui-data.tar.gz"
 docker compose start open-webui >/dev/null
+
+echo "正在短暂停止 AI Web 以生成一致性归档..."
+docker compose --profile yancore stop ai-web >/dev/null 2>&1 || true
+bash scripts/ai-web-data-archive.sh create "$backup_dir/ai-web-data.tar.gz"
+docker compose --profile yancore start ai-web >/dev/null
 trap - EXIT
 
 cp .env "$backup_dir/runtime.env"
 docker compose config --images > "$backup_dir/images.txt"
 (
   cd "$backup_dir"
-  sha256sum litellm.sql open-webui-data.tar.gz runtime.env images.txt > SHA256SUMS
+  sha256sum litellm.sql open-webui-data.tar.gz ai-web-data.tar.gz runtime.env images.txt > SHA256SUMS
 )
 
 # 只清理本脚本生成的时间戳目录，避免误删备份根目录中的其他内容。

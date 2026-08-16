@@ -160,11 +160,11 @@ docker stats --no-stream
 
 - LiteLLM PostgreSQL SQL。
 - Open WebUI 数据卷，包括账号、聊天、配置和图片。
-- ai-web 会话数据卷 `ai_web_data`，包括用户对话与用量元数据。
+- ai-web 数据卷 `ai_web_data`（`ai-web-data.tar.gz`），包括用户对话、角色、世界观、知识库、BYOK 设置与观测事件。
 - 运行 `.env`。
 - 镜像清单和 SHA-256 校验文件。
 
-Open WebUI 会短暂停止，退出或失败时脚本会自动尝试恢复服务。默认只清理超过 35 天且名称符合脚本时间戳格式的旧目录。可通过 `BACKUP_DIR` 和 `BACKUP_RETENTION_DAYS` 调整。
+备份时会短暂停止 Open WebUI 与 AI Web 以生成一致归档，退出或失败时脚本会自动尝试恢复服务。默认只清理超过 35 天且名称符合脚本时间戳格式的旧目录。可通过 `BACKUP_DIR` 和 `BACKUP_RETENTION_DAYS` 调整。
 
 每周备份示例：
 
@@ -181,6 +181,18 @@ Open WebUI 会短暂停止，退出或失败时脚本会自动尝试恢复服务
 ```
 
 脚本会先验证 SHA-256 和压缩归档，再覆盖数据库与数据卷。正式恢复前应在临时环境完成一次演练，禁止直接在唯一生产副本上试验。
+
+新版备份包含 `ai-web-data.tar.gz`；恢复脚本会在恢复 Open WebUI 后、启动服务前恢复 AI Web 数据卷。旧备份缺少该文件时脚本会明确警告并跳过 AI Web 恢复，不中断数据库恢复。
+
+### 7.1 磁盘治理
+
+`scripts/disk-governance.sh` 用于控制磁盘水位：
+
+- 清理超过 `DOCKER_PRUNE_UNTIL`（默认 72 小时）的悬空镜像与构建缓存；
+- 只保留最新 `AI_WEB_KEEP_IMAGES`（默认 5）个 `ai-yanchuaner/ai-web:<日期>-<哈希>` 历史镜像，`preview` 与 `phase-1` 标签不删除；
+- 观测事件 JSONL 由应用按大小轮转：`AI_WEB_OBSERVABILITY_MAX_BYTES`（默认 50 MiB）触发轮转，保留 `AI_WEB_OBSERVABILITY_KEEP_ROTATED`（默认 5）个文件，历史文件与当前文件一起被备份。
+
+先执行 `bash scripts/disk-governance.sh --dry-run` 预览，再正式执行；建议与每周备份 cron 一起调度，例如在备份完成后追加 `bash scripts/disk-governance.sh`。
 
 ## 8. 两个月运行检查
 

@@ -12,6 +12,7 @@ import { createObservabilityHub } from "@/observability/port";
 import { createJsonlObservabilityExporter } from "@/observability/jsonl-exporter";
 import type { WorkflowEvent } from "@/domain/workflow-events";
 import { createCapabilityAdapter } from "@/capabilities/adapters";
+import { requestDedupe } from "@/lib/request-dedupe";
 
 export type ChatHandlerConfig = {
   publicUrl: URL;
@@ -53,6 +54,31 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
     request.headers.get("x-client-request-id"),
     request.headers.get("x-trace-id"),
   );
+  const dedupeKey = request.headers.get("x-client-request-id")?.trim() || null;
+  const beginDedupe = (): NextResponse | null => {
+    if (!dedupeKey) return null;
+    const check = requestDedupe.begin(dedupeKey);
+    if (check.allowed) return null;
+    return NextResponse.json(
+      {
+        error:
+          check.status === "pending"
+            ? "该请求正在处理中，请勿重复提交。"
+            : "该请求已完成，请勿重复提交。",
+        code: "DUPLICATE_REQUEST",
+      },
+      { status: 409 },
+    );
+  };
+  const markBilled = (): void => {
+    if (dedupeKey) requestDedupe.finish(dedupeKey, "billed");
+  };
+  const finishWithError = (error: unknown): void => {
+    if (!dedupeKey) return;
+    requestDedupe.finish(dedupeKey, error instanceof ChatV1Error ? "failed" : "unknown");
+  };
+  const duplicateResponse = beginDedupe();
+  if (duplicateResponse) return duplicateResponse;
   const capabilityAdapter = createCapabilityAdapter({
     model: parsed.model,
     embeddingModel: resolveEmbeddingModel(session),
@@ -72,7 +98,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   }
   if (!conversationDetail || conversationDetail.mode === "chat") {
     try {
-      return await runChatV1({
+      const response = await runChatV1({
         runId: `run_${ids.traceId}`,
         capabilityId: "text.chat.general",
         adapter: capabilityAdapter,
@@ -85,7 +111,10 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
         onEvent: emit(conversationDetail?.id),
         fetcher,
       });
+      markBilled();
+      return response;
     } catch (error) {
+      finishWithError(error);
       if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
         const revoked = NextResponse.json(
           { error: error.message, code: "SESSION_REVOKED" },
@@ -103,7 +132,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   if (conversationDetail?.mode === "roleplay" && conversationDetail.persona) {
     const query = [...parsed.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     try {
-      return await runRoleplayV1({
+      const response = await runRoleplayV1({
         runId: `run_${ids.traceId}`,
         conversationId: conversationDetail.id,
         userId: session.subject.userId,
@@ -123,7 +152,10 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
         onEvent: emit(conversationDetail.id),
         fetcher,
       });
+      markBilled();
+      return response;
     } catch (error) {
+      finishWithError(error);
       if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
         const revoked = NextResponse.json(
           { error: error.message, code: "SESSION_REVOKED" },
@@ -164,11 +196,13 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
           onEvent: emit(conversationDetail.id),
           fetcher,
         });
+        markBilled();
         const response = NextResponse.json({ speakers: result.speakers });
         response.headers.set("X-Trace-ID", ids.traceId);
         response.headers.set("X-Client-Request-ID", ids.clientRequestId);
         return response;
       } catch (error) {
+        finishWithError(error);
         if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
           const revoked = NextResponse.json(
             { error: error.message, code: "SESSION_REVOKED" },
@@ -187,7 +221,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
       const speaker = conversationDetail.cast.find((persona) => persona.id === candidate.speakerId);
       if (!speaker) return NextResponse.json({ error: "发言人不存在。" }, { status: 400 });
       try {
-        return await runGroupSpeakerV1({
+        const response = await runGroupSpeakerV1({
           runId: `run_${ids.traceId}`,
           conversationId: conversationDetail.id,
           userId: session.subject.userId,
@@ -209,7 +243,10 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
           onEvent: emit(conversationDetail.id),
           fetcher,
         });
+        markBilled();
+        return response;
       } catch (error) {
+        finishWithError(error);
         if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
           const revoked = NextResponse.json(
             { error: error.message, code: "SESSION_REVOKED" },
@@ -225,5 +262,6 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
       }
     }
   }
+  if (dedupeKey) requestDedupe.finish(dedupeKey, "failed");
   return NextResponse.json({ error: "模型服务暂时不可用。" }, { status: 502 });
 }

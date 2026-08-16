@@ -37,6 +37,13 @@ node scripts/acceptance/run-fault-injection.mjs --scenario stream-abort
 
 生产通过 `AI_WEB_OBSERVABILITY_FILE` 指定 JSONL 观测文件（默认 `/data/observability/events.jsonl`）。事件先经 `sanitize` 再落盘，仅保存 schema/event/run/step/capability/trace/request/conversation/duration/outcome/error 等字段；消息正文、token、api key、cookie、grant 不会写入。管理员可用 `GET /api/admin/observability/events?requestId=...` 查询。
 
+文件按 `AI_WEB_OBSERVABILITY_MAX_BYTES`（默认 50 MiB）轮转，保留 `AI_WEB_OBSERVABILITY_KEEP_ROTATED`（默认 5）个历史文件；查询会跨当前与历史文件检索，单行损坏不中断查询。
+
+## 运维脚本
+
+- `pnpm test:ops`：Docker 集成测试，验证 ai-web 数据卷归档 create/restore 闭环（无 Docker 环境自动跳过）。
+- `bash scripts/disk-governance.sh [--dry-run]`：清理悬空镜像/构建缓存并保留最新 5 个 ai-web 日期镜像。
+
 生态级身份、网关、工作流、计费和观测语义由工作区根 `docs/architecture.md`、`docs/contracts.md`、`docs/extensions.md`、`docs/billing-and-ledger.md` 与 `docs/observability.md` 定义。本目录只补充 AI 仓库实现。生态治理仓尚未公开前不维护越出本仓根目录的 Markdown 链接；发布后改为固定版本链接。
 
 ## 历史与验收记录

@@ -2,7 +2,7 @@
 
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { rm } from "node:fs/promises";
-import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
+import { readJsonFile, userStorePath, withFileLock, writeJsonFile } from "@/lib/store";
 
 export type MediaProviderSettings = {
   baseUrl: string;
@@ -95,30 +95,34 @@ export async function updateMediaSettings(
   input: MediaSettingsInput,
   allowInsecure: boolean,
 ): Promise<MediaSettingsView | null> {
-  const existing = await readStore(userId);
-  const baseUrl = input.baseUrl?.trim().replace(/\/+$/, "") || existing?.baseUrl || "";
-  const visionModel = input.visionModel?.trim() || existing?.visionModel || "";
-  const imageModel = input.imageModel?.trim() || existing?.imageModel || "";
-  const invalid = validateMediaSettings({ baseUrl, visionModel, imageModel, apiKey: input.apiKey }, allowInsecure);
-  if (invalid) throw new Error(invalid);
-  const apiKey =
-    input.apiKey !== undefined && input.apiKey.length > 0
-      ? encryptSecret(input.apiKey.trim(), masterSecret)
-      : existing?.apiKeyEncrypted;
-  if (!apiKey) throw new Error("请填写 API Key，或留空保持不变。");
-  const store: MediaStore = {
-    baseUrl,
-    visionModel,
-    imageModel,
-    apiKeyEncrypted: apiKey,
-    updatedAt: Date.now(),
-  };
-  await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
-  return getMediaSettings(userId);
+  return withFileLock(storePath(userId), async () => {
+    const existing = await readStore(userId);
+    const baseUrl = input.baseUrl?.trim().replace(/\/+$/, "") || existing?.baseUrl || "";
+    const visionModel = input.visionModel?.trim() || existing?.visionModel || "";
+    const imageModel = input.imageModel?.trim() || existing?.imageModel || "";
+    const invalid = validateMediaSettings({ baseUrl, visionModel, imageModel, apiKey: input.apiKey }, allowInsecure);
+    if (invalid) throw new Error(invalid);
+    const apiKey =
+      input.apiKey !== undefined && input.apiKey.length > 0
+        ? encryptSecret(input.apiKey.trim(), masterSecret)
+        : existing?.apiKeyEncrypted;
+    if (!apiKey) throw new Error("请填写 API Key，或留空保持不变。");
+    const store: MediaStore = {
+      baseUrl,
+      visionModel,
+      imageModel,
+      apiKeyEncrypted: apiKey,
+      updatedAt: Date.now(),
+    };
+    await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
+    return getMediaSettings(userId);
+  });
 }
 
 export async function clearMediaSettings(userId: number): Promise<void> {
-  await rm(storePath(userId), { force: true });
+  await withFileLock(storePath(userId), async () => {
+    await rm(storePath(userId), { force: true });
+  });
 }
 
 export async function getDecryptedMediaProvider(
