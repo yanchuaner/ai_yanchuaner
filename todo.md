@@ -1,7 +1,7 @@
 # 燕中 AI 开发清单
 
 更新日期：2026-08-16  
-当前执行项：`AI-40`  
+当前执行项：`AI-41`  
 适用仓库：`ai_yanchuaner`
 
 本文只维护燕中 AI 当前可执行的开发队列。生态阶段以 `../docs/燕中生态项目关系.txt` 为准，系统边界以 `../docs/architecture.md` 和 `../docs/contracts.md` 为准，本仓实现方向以 `docs/architecture.md` 为准。
@@ -204,12 +204,14 @@
 
 依赖：`AI-31`。
 
-- [ ] 定义 Conversation Repository，owner 条件在仓储内部执行。
-- [ ] 为会话、消息、工作流版本和快照增加 `schemaVersion`、稳定 ID 与时间字段。
-- [ ] 当前 JSON 文件实现成为适配器，保持原子替换、进程内并发保护和旧数据读取。
-- [ ] 使用内存实现运行同一套仓储契约测试。
+- [x] 定义 Conversation Repository，owner 条件在仓储内部执行。
+- [x] 为会话、消息、工作流版本和快照增加 `schemaVersion`、稳定 ID 与时间字段。
+- [x] 当前 JSON 文件实现成为适配器，保持原子替换、进程内并发保护和旧数据读取。
+- [x] 使用内存实现运行同一套仓储契约测试。
 
 完成定义：应用和工作流不调用文件 API、不依赖目录布局；旧数据 fixture 可无损读取和写回。
+
+2026-08-16 已合入：新增 `conversation-repository.ts` 端口与文件/内存两个适配器；会话路由与 chat-handler 全部改用仓储端口，旧 JSON 无 schemaVersion 可无损读写。门禁：typecheck、219 项测试、构建、契约测试、依赖审计全部通过；生产会话持久化冒烟通过。
 
 ### AI-41 迁移角色、世界与设置仓储
 
