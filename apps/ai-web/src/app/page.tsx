@@ -151,12 +151,22 @@ export default function HomePage() {
   const [setupWorldId, setSetupWorldId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const [latestMessageIds, setLatestMessageIds] = useState<Set<string>>(new Set());
+
+  function markLatest(...ids: string[]) {
+    setLatestMessageIds((current) => {
+      const next = new Set(current);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  }
 
   function handleSessionExpired() {
     abortRef.current?.abort();
     setSession({ status: "anonymous" });
     setConversationId(null);
     setMessages([]);
+    setLatestMessageIds(new Set());
     setActiveCast([]);
     setPending(false);
   }
@@ -523,6 +533,7 @@ export default function HomePage() {
         imageUrl: body.image,
       };
       setMessages((current) => [...current, message]);
+      markLatest(message.id);
       setPrompt("");
       if (conversationId) {
         await fetch(`/api/chat/conversations/${conversationId}/messages`, {
@@ -617,6 +628,7 @@ export default function HomePage() {
     if (!Array.isArray(detailResponse.messages)) return;
     setConversationId(id);
     setMessages(detailResponse.messages);
+    setLatestMessageIds(new Set());
     setActivePersona(detailResponse.persona ?? undefined);
     setActiveCast(Array.isArray(detailResponse.cast) ? detailResponse.cast : []);
     setActiveWorldTitle(detailResponse.world?.snapshot.title ?? null);
@@ -734,6 +746,7 @@ export default function HomePage() {
     setConversationId(body.conversation.id);
     setConversations((current) => [body.conversation, ...current]);
     setMessages([]);
+    setLatestMessageIds(new Set());
     setActivePersona(undefined);
     setActiveCast([]);
     setActiveWorldTitle(null);
@@ -785,6 +798,7 @@ export default function HomePage() {
     setConversationId(body.conversation.id);
     setConversations((current) => [body.conversation, ...current]);
     setMessages([]);
+    setLatestMessageIds(new Set());
     setActivePersona(target);
     setActiveCast([]);
     setActiveWorldTitle(null);
@@ -814,6 +828,7 @@ export default function HomePage() {
     setConversationId(body.conversation.id);
     setConversations((current) => [body.conversation, ...current]);
     setMessages([]);
+    setLatestMessageIds(new Set());
     setActivePersona(undefined);
     setActiveCast(cast);
     setActiveWorldTitle(selectedWorld?.snapshot.title ?? null);
@@ -862,6 +877,7 @@ export default function HomePage() {
           personaId: speaker.id,
         })),
       ]);
+      markLatest(...messageIdBySpeaker.values());
       await Promise.allSettled(
         speakers.map(async (speaker) => {
           const response = await fetch("/api/chat/completions", {
@@ -988,6 +1004,7 @@ export default function HomePage() {
     if (id === conversationId) {
       setConversationId(null);
       setMessages([]);
+      setLatestMessageIds(new Set());
       setActivePersona(undefined);
       setActiveCast([]);
     }
@@ -1173,6 +1190,7 @@ export default function HomePage() {
     await fetch("/api/auth/logout", { method: "POST" });
     setSession({ status: "anonymous" });
     setMessages([]);
+    setLatestMessageIds(new Set());
     setConversationId(null);
     setView("home");
   }
@@ -1232,6 +1250,7 @@ export default function HomePage() {
     ].map(({ role, content: messageContent }) => ({ role, content: messageContent }));
     if (activeMode === "group" && activeCast.length > 0) {
       setMessages((current) => [...current, userMessage]);
+      markLatest(userMessage.id);
       setPrompt("");
       setError("");
       setPending(true);
@@ -1261,6 +1280,7 @@ export default function HomePage() {
       return;
     }
     setMessages((current) => [...current, userMessage, assistantMessage]);
+    markLatest(userMessage.id, assistantMessage.id);
     setPrompt("");
     setError("");
     setPending(true);
@@ -1421,6 +1441,7 @@ export default function HomePage() {
         personaId: speaker.id,
       })),
     ]);
+    markLatest(...messageIdBySpeaker.values());
     const results = await Promise.allSettled(
       speakers.map(async (speaker) => {
         const response = await fetch("/api/chat/completions", {
@@ -1743,6 +1764,7 @@ export default function HomePage() {
                 onSpeak={speakVoice}
                 pendingImage={pendingImage}
                 imageBusy={imageBusy}
+                latestMessageIds={latestMessageIds}
                 onPickImage={pickImageFile}
                 onClearImage={() => setPendingImage(null)}
                 onGenerateImage={generateImage}

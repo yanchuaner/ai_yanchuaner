@@ -63,6 +63,7 @@ type ChatStageProps = {
   onSpeak: (messageId: string, text: string) => Promise<void>;
   pendingImage?: string | null;
   imageBusy?: boolean;
+  latestMessageIds?: Set<string>;
   onPickImage: () => void;
   onClearImage: () => void;
   onGenerateImage: (prompt: string) => Promise<void>;
@@ -126,6 +127,7 @@ export function ChatStage({
   onSpeak,
   pendingImage,
   imageBusy,
+  latestMessageIds,
   onPickImage,
   onClearImage,
   onGenerateImage,
@@ -377,9 +379,10 @@ export function ChatStage({
                   : activePersona;
               const isStreaming =
                 pending && message.role === "assistant" && index === displayMessages.length - 1;
+              const isLatest = latestMessageIds?.has(message.id) ?? false;
               return (
                 <article
-                  className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant} ${isStreaming ? styles.streaming : ""}`}
+                  className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant} ${isLatest ? styles.latest : ""} ${isStreaming ? styles.streaming : ""}`}
                   key={message.id}
                 >
                   <span className={styles.messageIcon}>
