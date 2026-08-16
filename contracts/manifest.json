@@ -1,0 +1,15 @@
+{
+  "manifestVersion": "1.0",
+  "repository": "https://github.com/yanchuaner/yanzhong-ecosystem.git",
+  "commit": "6d9a2fbcb0c8ca5c6d02454404e25d0320add428",
+  "schemaRoot": "docs/schemas",
+  "schemas": [
+    { "name": "common-defs", "role": "shared-definitions", "source": "docs/schemas/common-defs.v1.schema.json", "local": "schemas/common-defs.v1.schema.json", "sha256": "15cbb61b92ad4a109a124e1529b8483dd3586d41f1b82db4a371aaea409471e3", "schemaVersion": "1" },
+    { "name": "error-envelope", "role": "contract", "source": "docs/schemas/error-envelope.v1.schema.json", "local": "schemas/error-envelope.v1.schema.json", "sha256": "d002c47ad2ae11b5443693506b764487e2b2a38f0ac10ba46cd15d28d90d7e88", "schemaVersion": "1" },
+    { "name": "identity-event", "role": "contract", "source": "docs/schemas/identity-event.v1.schema.json", "local": "schemas/identity-event.v1.schema.json", "sha256": "62b2f5ceda6384e63d2aaee75e9c187693e9706f7d6918d691f83638e9fdc0f4", "schemaVersion": "1" },
+    { "name": "message-envelope", "role": "contract", "source": "docs/schemas/message-envelope.v1.schema.json", "local": "schemas/message-envelope.v1.schema.json", "sha256": "cf9a4131763b1144ac21362be47aee70ef0229e33a5a4dedc066a1522de60e65", "schemaVersion": "1" },
+    { "name": "capability", "role": "contract", "source": "docs/schemas/capability.v1.schema.json", "local": "schemas/capability.v1.schema.json", "sha256": "0067cab086bcaf75a9bb8971e5c7edf024d1fb6d73a3edbb695cd8415b963454", "schemaVersion": "1" },
+    { "name": "workflow", "role": "contract", "source": "docs/schemas/workflow-manifest.v1.schema.json", "local": "schemas/workflow-manifest.v1.schema.json", "sha256": "021d216bc542dc4bf703ccec950bebc15ac07a279dbf261be2cac4a2cad57dce", "schemaVersion": "1" },
+    { "name": "telemetry", "role": "contract", "source": "docs/schemas/telemetry-event.v1.schema.json", "local": "schemas/telemetry-event.v1.schema.json", "sha256": "e9fe45b3c47b4bbc0b4700be9bcf96c1ee4604adfb908b7d00afc5c398e31032", "schemaVersion": "1" }
+  ]
+}

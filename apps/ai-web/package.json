@@ -2,6 +2,7 @@
   "name": "@yanchuaner/ai-web",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
@@ -15,7 +16,7 @@
   },
   "dependencies": {
     "lucide-react": "0.542.0",
-    "next": "15.5.19",
+    "next": "15.5.21",
     "openid-client": "6.8.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
