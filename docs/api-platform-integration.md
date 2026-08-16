@@ -1,31 +1,74 @@
-# API 平台集成
+# AI 使用层与统一 API 网关集成
 
-燕中 AI 保留唯一 LiteLLM 数据面，Open WebUI 只作为过渡客户端。所有面向用户、工作台和 Agent 的调用先经过 `api_yanchuaner` 中的 YanCore 主体与权益控制面，再由兼容网关和受限内部渠道进入 LiteLLM。
+本文定义 `ai_yanchuaner` 如何消费 `api.yanchuaner.cn`。稳定语义以工作区 `docs/contracts.md` 为准。
+
+## 依赖方向
 
 ```text
-自主 AI Web BFF --逐登录应用 Key--+
-Open WebUI --------共享服务 Key-----+--> New API (api-gateway)
-Agent / 校友 API Key ---------------+
-              |
-              v
-     LiteLLM (litellm-gateway)
-              |
-              v
-       获授权的官方模型
+AI Web / future adapter
+        │ YanCore grant + application credential
+        ▼
+api.yanchuaner.cn
+  subject / policy / capability / routing / billing / audit
+        │ internal infrastructure adapter
+        ▼
+LiteLLM or direct provider adapter
+        ▼
+authorized model provider
 ```
 
-两个仓库通过外部 Docker 网络 `yanchuaner-ai-core` 连接。Open WebUI 使用 New API 签发的独立服务 Token，不再直接使用 LiteLLM 虚拟 Key；LiteLLM master key 仍只用于本地管理。
+AI 使用层只依赖公开网关。LiteLLM、New API 内部渠道、供应商 Key 和控制面数据库均不可见。
 
-用户身份由主站统一提供。Open WebUI 同时关闭登录表单、密码鉴权、本地注册和首次本地管理员注册，通过主站 OIDC 自动创建已认证成员账号；`role=admin` 映射为管理员，`alumni/student/teacher` 映射为普通用户。API 平台使用同一身份源的独立 OAuth 客户端，两个下游互不复用客户端密钥。容器内通过 `host.docker.internal` 访问主站的发现、令牌和用户信息端点，浏览器授权与回调仍使用 `localhost` 或正式 HTTPS 域名。
+## 身份与凭据
 
-Open WebUI `0.10.2` 会把全新数据库中的首个 OAuth 用户提升为管理员，先于角色管理生效。首次启动只能监听回环地址，由受信任的主站管理员先登录，完成 `scripts/verify-openwebui-oidc-callback.ps1` 后才能开放反向代理；这属于过渡依赖的明确运行边界，不属于燕中自主身份实现。
+1. 浏览器通过主站 OIDC Authorization Code + S256 PKCE 登录。
+2. AI BFF 使用独立交换客户端，把主站短期令牌提交给 YanCore。
+3. API 复验 UserInfo，返回限定 `subject`、`application`、`audience`、scope、模型/能力和预算的短期 grant 与应用 Key。
+4. BFF 把凭据放入加密 HttpOnly Cookie；浏览器只读取脱敏会话信息。
+5. API 返回 401/403 时，BFF 立即清除会话并停止能力调用。
 
-启动顺序由 `api_yanchuaner/scripts/bootstrap-integrated-stack.ps1` 统一处理。单独启动本仓库前，必须确保外部网络和 `api-gateway` 已存在，否则 Open WebUI 虽可启动但不能调用模型。
+OIDC client Secret、YanCore exchange Secret 和应用 Key 分域管理，不得复用。
 
-## 当前归因边界
+## 模型与能力调用
 
-阶段 1 已定义 YanCore Subject Grant 并为自主 AI Web 实现逐登录、短期、有限预算的应用 Key，见 `docs/yancore-subject-grant-client.md`。自主路径的模型请求可归因到映射后的 API 用户；Open WebUI 仍使用受限服务 Key，只能记入独立服务账户，两条账路不得静默合并。
+- 文本和嵌入调用都经统一网关，由 API 执行策略、预扣、路由、结算和审计。
+- AI 传递 `client_request_id` 与 `trace_id`，保留网关响应的 `request_id`。
+- AI 展示网关返回的标准化 usage 和余额投影，不自行扣减或修正余额。
+- 供应商或渠道切换只发生在 API/设施层；AI 默认工作流最终使用稳定能力 ID。
+- 兼容期可使用公开模型别名，但不得读取内部渠道 ID 或 LiteLLM 模型配置。
 
-## 第三方与品牌边界
+## 失败与重试
 
-LiteLLM 和 Open WebUI 均是外部依赖，不属于燕中自主业务代码。缺少 Open WebUI 品牌授权不会阻止 YanCore 和自主 AI Web 研发，但 Open WebUI 不得作为燕中原创产品入口公开扩张；未取得书面或企业许可时必须保留必要标识或满足其许可证阈值。固定镜像、源码 revision 与许可见 `THIRD_PARTY_NOTICES.md`。
+| 错误 | AI 行为 |
+| --- | --- |
+| 会话撤销/未认证 | 清除 Cookie，要求重新登录 |
+| scope/模型不允许 | 保持会话，提示能力不可用，不换渠道绕过 |
+| 额度不足 | 展示余额入口，不自动重试 |
+| RPM/TPM/并发 | 遵循 `Retry-After`，避免并发重放 |
+| 上游不可用/超时 | 仅复用同一幂等键进行受控重试 |
+| SSE 断连 | 发出取消信号；最终计费由 API 状态决定 |
+| RAG 降级 | 可继续无知识对话，但记录并显示降级状态 |
+
+AI 不根据错误文案分支；兼容旧接口时由 YanCore adapter 映射稳定错误码。
+
+## Open WebUI 与 LiteLLM
+
+- Open WebUI 只保留为内网兼容/回退客户端，使用独立服务账户，不继承个人主体或公益额度。
+- LiteLLM 只作为内部设施适配器和成本核对工具，不是用户账本，也不向 AI Web 提供公共 API。
+- 两者的管理端口不开放公网，数据与自主 AI 会话分离。
+- 移除或替换任一组件时保持 YanCore 和 `/v1` 对外契约不变。
+
+## 契约测试
+
+集成至少覆盖：
+
+- 主体交换、受众与 scope 拒绝；
+- 应用 Key 只显示一次、过期和撤销；
+- 普通与 SSE 请求的 request/trace 传播；
+- 文本和嵌入能力权限；
+- 额度预扣、结算、退款和待对账；
+- 预算、RPM、TPM、并发与 Redis 故障；
+- AI 对稳定错误码的界面行为；
+- 浏览器响应不含 grant、Key 或供应商字段。
+
+本机 fixture 证明协议行为，不等于真实供应商和生产结算验收。
