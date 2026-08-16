@@ -1,7 +1,7 @@
 # 燕中 AI 开发清单
 
 更新日期：2026-08-16  
-当前执行项：`AI-20`  
+当前执行项：`AI-21`  
 适用仓库：`ai_yanchuaner`
 
 本文只维护燕中 AI 当前可执行的开发队列。生态阶段以 `../docs/燕中生态项目关系.txt` 为准，系统边界以 `../docs/architecture.md` 和 `../docs/contracts.md` 为准，本仓实现方向以 `docs/architecture.md` 为准。
@@ -89,11 +89,13 @@
 
 依赖：`AI-11`。
 
-- [ ] 从 `page.tsx` 提取登录会话、余额、流水、开发者 Key 和管理员额度的类型化 client 与 action。
-- [ ] 统一加载、未登录、权限不足、失败和撤销后的状态转换。
-- [ ] 为响应解析、会话失效和错误映射增加测试。
+- [x] 从 `page.tsx` 提取登录会话、余额、流水、开发者 Key 和管理员额度的类型化 client 与 action。
+- [x] 统一加载、未登录、权限不足、失败和撤销后的状态转换。
+- [x] 为响应解析、会话失效和错误映射增加测试。
 
 完成定义：`page.tsx` 不再拼接上述 API 路径，不解析网关 DTO，也不持有跨系统凭据处理逻辑。
+
+2026-08-16 已合入：新增 `src/lib/account.ts` 账户 action 层，网关 snake_case 在边界归一为 camelCase；`page.tsx` 的会话、余额、流水、Key 与额度直接 fetch 全部移除，统一 `AccountActionError` 处理未登录/权限不足/冲突/服务失败。门禁：typecheck、110 项测试（新增 13 项）、构建、契约测试、生产依赖审计全部通过。
 
 ### AI-21 提取会话与对话 actions
 
