@@ -29,9 +29,10 @@ errorCode, durationMs, outcome, conversationId
 
 ## 已知缺口
 
-- `durationMs` 与 `outcome` 在字段白名单中，但工作流运行时尚未真实生成；生产事件中只有 `errorCode`（失败/取消时）。
 - 查询为全文件扫描，无索引；文件增长后查询成本线性上升。
 - 无告警通道；exporter 失败被静默吞掉。
+
+`durationMs` 与 `outcome` 由工作流运行时真实生成：completed→success、failed→failure、cancelled→cancelled、degraded→degraded，并记录步骤与运行耗时；`errorCode` 在失败与取消事件中保留。
 
 ## 日志
 

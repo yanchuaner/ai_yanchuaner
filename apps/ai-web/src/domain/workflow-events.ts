@@ -4,6 +4,7 @@ export const WORKFLOW_EVENT_SCHEMA_VERSION = "1.0";
 
 export type WorkflowEventEntity = "run" | "step" | "message" | "capability";
 export type WorkflowEventPhase = "started" | "completed" | "failed" | "cancelled" | "degraded";
+export type WorkflowOutcome = "success" | "failure" | "cancelled" | "degraded" | "unknown";
 
 export type WorkflowEvent = {
   schemaVersion: typeof WORKFLOW_EVENT_SCHEMA_VERSION;
@@ -21,6 +22,7 @@ export type WorkflowEvent = {
   errorCode?: string;
   message?: string;
   durationMs?: number;
+  outcome?: WorkflowOutcome;
   attributes: Record<string, string | number | boolean | null>;
 };
 
@@ -117,6 +119,18 @@ export function parseWorkflowEvent(value: unknown): WorkflowEvent {
     }
     event.durationMs = value.durationMs;
   }
+  if (value.outcome !== undefined) {
+    if (
+      value.outcome !== "success" &&
+      value.outcome !== "failure" &&
+      value.outcome !== "cancelled" &&
+      value.outcome !== "degraded" &&
+      value.outcome !== "unknown"
+    ) {
+      throw new WorkflowEventValidationError("outcome 无效。");
+    }
+    event.outcome = value.outcome;
+  }
   return event;
 }
 
@@ -135,6 +149,7 @@ export type CreateWorkflowEventInput = {
   errorCode?: string;
   message?: string;
   durationMs?: number;
+  outcome?: WorkflowOutcome;
   attributes?: WorkflowEvent["attributes"];
 };
 
@@ -155,6 +170,7 @@ export function createWorkflowEvent(input: CreateWorkflowEventInput): WorkflowEv
     errorCode: input.errorCode,
     message: input.message,
     durationMs: input.durationMs,
+    outcome: input.outcome,
     attributes: input.attributes ?? {},
   });
 }

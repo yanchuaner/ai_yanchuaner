@@ -44,4 +44,5 @@ ledger
 
 - 去重注册表为单进程内存实现，多实例部署需共享存储。
 - TTL 后相同键重发视为新请求。
-- 消息 `request_id`/usage 与账本没有定时自动对账，只有人工脚本。
+
+对账已自动化：`pnpm reconcile:ledger` 拉取本地消息与网关 logs/ledger 比对（缺日志、缺账本、悬挂 reserve、usage/金额不一致均报告），建议与备份 cron 一起每周执行。

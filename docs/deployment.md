@@ -153,7 +153,7 @@ docker compose ps
 docker stats --no-stream
 ```
 
-外部监控访问 `https://ai.example.com/api/health`。`scripts/health-check.sh` 当前覆盖 db/litellm/open-webui，不包含 ai-web；把 ai-web 纳入健康脚本是已登记缺口（见 [operations.md](operations.md)）。
+外部监控访问 `https://ai.example.com/api/health`。`scripts/health-check.sh` 覆盖 db/litellm/open-webui/ai-web 四个服务。服务启动时执行配置校验与生产数据迁移，配置无效或迁移失败会立即退出（fail-fast）。
 
 ## 7. 备份与恢复
 
@@ -191,6 +191,7 @@ docker stats --no-stream
 
 - 清理超过 `DOCKER_PRUNE_UNTIL`（默认 72 小时）的悬空镜像与构建缓存；
 - 只保留最新 `AI_WEB_KEEP_IMAGES`（默认 5）个 `ai-yanchuaner/ai-web:<日期>-<哈希>` 历史镜像，`preview` 与 `phase-1` 标签不删除；
+- 磁盘使用率达到 `AI_WEB_DISK_ALERT_PERCENT`（默认 85%）时输出 `DISK_ALERT` 并返回退出码 1；
 - 观测事件 JSONL 由应用按大小轮转：`AI_WEB_OBSERVABILITY_MAX_BYTES`（默认 50 MiB）触发轮转，保留 `AI_WEB_OBSERVABILITY_KEEP_ROTATED`（默认 5）个文件，历史文件与当前文件一起被备份。
 
 先执行 `bash scripts/disk-governance.sh --dry-run` 预览，再正式执行；建议与每周备份 cron 一起调度，例如在备份完成后追加 `bash scripts/disk-governance.sh`。
@@ -231,4 +232,4 @@ tail -n 50 /var/log/ai-yanchuaner-backup.log
 - 上游价格变化后必须同步成本配置，否则 LiteLLM 的美元预算不再准确。
 - 生产服务器使用本地固定标签的 `docker-compose.override.yml` 适配离线导入镜像；该文件只属于服务器，不提交仓库。升级镜像前必须同时核对仓库摘要与服务器标签。
 - AI 证书当前有效至 2026-10-13，Certbot 定时续期已启用；到期前必须完成一次续期演练。不要为了自动化把 DNS API 凭据随意留在服务器。
-- 磁盘水位没有告警通道，只有 `disk-governance.sh` 清理；备份归档仍为同盘，离站加密副本需人工同步。
+- 磁盘告警为脚本级（日志 + 退出码），尚无外部告警通道；备份归档仍为同盘，离站加密副本需人工同步。
