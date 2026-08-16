@@ -247,6 +247,31 @@ export default function HomePage() {
     setView("home");
   }
 
+  useEffect(() => {
+    void loadAccountSession()
+      .then((result) => {
+        if (result.status === "authenticated") {
+          const { identity, subject, models, sessionQuotaUnits, expiresAt } = result.session;
+          setSession({ status: "authenticated", identity, subject, models, sessionQuotaUnits, expiresAt });
+          setModel(models[0] ?? "");
+          void loadBalance();
+          void loadConversations();
+          void loadPersonas();
+          void loadFavorites();
+          void loadUserKnowledge();
+          void loadVoiceSettings();
+          void loadWorlds();
+          return;
+        }
+        if (result.status === "unavailable") {
+          setSession({ status: "anonymous", message: result.message });
+          return;
+        }
+        setSession({ status: "anonymous" });
+      })
+      .catch(() => setSession({ status: "anonymous" }));
+  }, []);
+
   function isSessionError(error: unknown): boolean {
     return (
       (error instanceof AccountActionError && error.code === "unauthenticated") ||
