@@ -7,6 +7,7 @@ import { KnowledgeDraftInput } from "@/components/knowledge-draft";
 import { KnowledgePanel } from "@/components/knowledge-panel";
 import { PersonaForm } from "@/components/persona-form";
 import { type Persona, type PersonaInput } from "@/lib/personas";
+import { exportPersonaCard } from "@/lib/persona-actions";
 import type { ConversationSummary, KnowledgeDraft, PersonaKnowledge } from "@/lib/types";
 import styles from "./persona-detail.module.css";
 
@@ -58,15 +59,18 @@ export function PersonaDetail({
 
   async function exportCard() {
     if (!persona) return;
-    const response = await fetch(`/api/personas/${persona.id}/export`);
-    if (!response.ok) return;
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${persona.name}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      const exported = await exportPersonaCard(persona.id);
+      const blob = new Blob([exported.text], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = exported.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // 导出失败不阻断详情页交互。
+    }
   }
 
   return (
