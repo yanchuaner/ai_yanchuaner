@@ -194,6 +194,8 @@ docker stats --no-stream
 
 先执行 `bash scripts/disk-governance.sh --dry-run` 预览，再正式执行；建议与每周备份 cron 一起调度，例如在备份完成后追加 `bash scripts/disk-governance.sh`。
 
+每周备份 cron 调用的 `scripts/backup-data.sh` 会在归档与校验完成后自动执行磁盘治理（失败仅告警，不阻断备份），无需新增计划任务。
+
 ## 8. 两个月运行检查
 
 每周执行一次：

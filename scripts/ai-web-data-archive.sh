@@ -24,7 +24,7 @@ case "$mode" in
       -c 'tar -C /data -czf - .' > "$archive"
     ;;
   restore)
-    docker run --rm -i --name "ai-web-archive-$$" \
+    docker run --rm -i --user 0:0 --name "ai-web-archive-$$" \
       -v "${volume}:/data" \
       --entrypoint sh "${image}" \
       -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -C /data -xzf -' \
