@@ -73,7 +73,8 @@ OPENWEBUI_ENABLE_SIGNUP=False
 ```bash
 cd /opt/yanchuaner/ai_yanchuaner
 chmod 600 .env
-docker compose pull
+docker compose pull db litellm open-webui
+docker load < ai-web-<日期>-<短哈希>.tar.gz   # 离线导入自主 AI Web 固定镜像
 docker compose up -d
 ./scripts/health-check.sh
 ```
@@ -97,7 +98,7 @@ Open WebUI 当前共享服务 Key 只能记入独立服务账户，不能证明�
 
 自主 `ai-web` 使用逐登录短期 Key，模型请求在 API 控制面按个人主体归因并写入额度流水与审计。Open WebUI 仍使用独立共享服务 Key，只允许内网/隧道访问，不得再向公网开放，也不得把共享账户调用解释为个人公益额度。
 
-暑期预览只面向少量已认证成员，不开放匿名访问和公开注册。普通成员主域登录已由项目负责人确认；扩大范围前仍必须完成角色同步、会话撤销和用户级账单验收。
+暑期预览只面向少量已认证成员，不开放匿名访问和公开注册。普通成员主域登录已由项目负责人确认；扩大范围前仍必须完成角色同步、会话撤销和用户级账单验收。用户自配媒体/语音 BYOK 已上线并加密存储；本仓不托管平台模型 API Key。
 
 ai-web 会话按用户持久化在 `ai_web_data:/data` 卷中（对话与用量元数据，不包含主站 token、grant 或应用 Key）。容器以 uid 1001 运行，首次创建卷后需执行一次 `chown 1001:1001 /data`；恢复与备份时把该卷与其他数据卷同等对待。
 
@@ -139,7 +140,7 @@ sudo certbot renew --dry-run
 
 ## 6. 自动恢复、日志与健康检查
 
-- 三个容器均使用 `restart: unless-stopped`。
+- 四个服务（ai-web、db、litellm、open-webui）均使用 `restart: unless-stopped`。
 - PostgreSQL、LiteLLM、Open WebUI 分别限制为 `256 MiB`、`1.5 GiB`、`1 GiB`。内存限制是故障边界，不是预留量；低访问时实际占用应明显更低，冷启动峰值由 swap 承接。
 - Docker JSON 日志单文件上限 `10 MB`，每个服务保留 `5` 个文件。
 - 镜像使用摘要固定，暑期内不要执行无计划升级。
@@ -152,7 +153,7 @@ docker compose ps
 docker stats --no-stream
 ```
 
-外部监控只访问 `https://ai.example.com/api/health`。内部健康脚本会通过 Compose 自动识别 ai-web 的实际宿主机端口。
+外部监控访问 `https://ai.example.com/api/health`。`scripts/health-check.sh` 当前覆盖 db/litellm/open-webui，不包含 ai-web；把 ai-web 纳入健康脚本是已登记缺口（见 [operations.md](operations.md)）。
 
 ## 7. 备份与恢复
 
@@ -226,7 +227,8 @@ tail -n 50 /var/log/ai-yanchuaner-backup.log
 
 - 文本和图片目前都是单上游，渠道故障时无法自动切换。
 - `1 vCPU / 2 GiB` 没有多人并发余量，swap 只能避免瞬时 OOM，不能提升性能。
-- 暑期冻结期间不升级 LiteLLM、Open WebUI、PostgreSQL 主版本，不接入 Agent、模型 API Key 托管（BYOK）或开放注册。
+- 暑期冻结期间不升级 LiteLLM、Open WebUI、PostgreSQL 主版本，不托管平台模型 API Key，不开放注册；用户自配媒体/语音 BYOK 不受此限制。
 - 上游价格变化后必须同步成本配置，否则 LiteLLM 的美元预算不再准确。
 - 生产服务器使用本地固定标签的 `docker-compose.override.yml` 适配离线导入镜像；该文件只属于服务器，不提交仓库。升级镜像前必须同时核对仓库摘要与服务器标签。
 - AI 证书当前有效至 2026-10-13，Certbot 定时续期已启用；到期前必须完成一次续期演练。不要为了自动化把 DNS API 凭据随意留在服务器。
+- 磁盘水位没有告警通道，只有 `disk-governance.sh` 清理；备份归档仍为同盘，离站加密副本需人工同步。

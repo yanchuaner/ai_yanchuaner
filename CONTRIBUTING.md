@@ -2,7 +2,7 @@
 
 ## 开始前
 
-先阅读 `AGENTS.md`、`docs/README.md`、`docs/architecture.md`、`docs/api-platform-integration.md`、`docs/copyright-matrix.md`、`LICENSE` 与 `THIRD_PARTY_NOTICES.md`。跨仓变更同时阅读工作区 `docs/contracts.md` 和 `docs/燕中生态项目关系.txt`。
+先阅读 `AGENTS.md`、`docs/README.md`、`docs/architecture.md`、`docs/gateway.md`、`docs/copyright-matrix.md`、`LICENSE` 与 `THIRD_PARTY_NOTICES.md`。跨仓变更同时阅读工作区 `docs/contracts.md` 和 `docs/燕中生态项目关系.txt`。
 
 从最新 `main` 创建符合工作区命名规则的分支。一个 Pull Request 只处理一个可评审问题，不提交 `.env`、凭据、数据库、备份、用户会话、知识原文、上传内容、构建产物或本机配置。
 

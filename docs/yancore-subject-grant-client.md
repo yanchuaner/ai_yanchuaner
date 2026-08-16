@@ -39,4 +39,4 @@ YANCORE_SUBJECT_EXCHANGE_CLIENT_ID=ai-yancore-bff
 
 ## 当前限制
 
-`apps/ai-web` 已实现登录到逐用户模型调用的代码闭环，但生产结论仍以真实 OpenAI/DeepSeek、失败退款、request ID 和用户日志查询验收为准。Open WebUI 继续作为独立服务账户 PoC 客户端，不继承自主 AI Web 的原创声明。
+`apps/ai-web` 已实现登录到逐用户模型调用的闭环，并完成真实网关验收（见 [ai-61-real-gateway-acceptance.md](ai-61-real-gateway-acceptance.md)）；当前适配边界见 [gateway.md](gateway.md)。Open WebUI 继续作为独立服务账户 PoC 客户端，不继承自主 AI Web 的原创声明。
