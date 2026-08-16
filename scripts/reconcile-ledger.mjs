@@ -10,8 +10,12 @@ const API_CONTAINER = process.env.API_CONTAINER || "api-yanchuaner-new-api-1";
 const CONTROL_DB = process.env.CONTROL_DB_CONTAINER || "api-yanchuaner-control-db-1";
 const AI_WEB_CONTAINER = process.env.AI_WEB_CONTAINER || "ai-yanchuaner-ai-web-1";
 
-function ssh(cmd) {
-  return execSync(`ssh -o BatchMode=yes ${SSH_HOST} ${cmd}`, { encoding: "utf8" }).trim();
+function remote(cmd) {
+  if (process.argv.includes("--local")) {
+    return execSync(cmd, { encoding: "utf8" }).trim();
+  }
+  const wrapped = `"${cmd.replace(/"/g, '\\"')}"`;
+  return execSync(`ssh -o BatchMode=yes ${SSH_HOST} ${wrapped}`, { encoding: "utf8" }).trim();
 }
 
 function terminalState(entries) {
@@ -116,8 +120,8 @@ async function readLocalMessages(dataDir) {
 }
 
 async function fetchRemote() {
-  const localRaw = ssh(
-    `"docker exec ${AI_WEB_CONTAINER} node -e 'const fs=require(\\"fs\\");const out=[];for(const f of fs.readdirSync(\\"/data/conversations\\")){const s=JSON.parse(fs.readFileSync(\\"/data/conversations/\\"+f,\\"utf8\\"));for(const c of (s.conversations||[])){for(const m of (c.messages||[])){out.push({messageId:m.id,requestId:m.requestId,usage:m.usage})}}}process.stdout.write(JSON.stringify(out))'"`,
+  const localRaw = remote(
+    `docker exec ${AI_WEB_CONTAINER} node -e 'const fs=require("fs");const out=[];for(const f of fs.readdirSync("/data/conversations")){const s=JSON.parse(fs.readFileSync("/data/conversations/"+f,"utf8"));for(const c of (s.conversations||[])){for(const m of (c.messages||[])){out.push({messageId:m.id,requestId:m.requestId,usage:m.usage})}}}process.stdout.write(JSON.stringify(out))'`,
   );
   const localMessages = JSON.parse(localRaw);
   const ids = [...new Set(localMessages.map((message) => message.requestId).filter(Boolean))];
@@ -125,11 +129,11 @@ async function fetchRemote() {
     return { localMessages, gatewayLogs: [], ledgerEntries: [] };
   }
   const idList = ids.map((id) => `'${id}'`).join(",");
-  const logsRaw = ssh(
-    `"docker exec ${CONTROL_DB} psql -U new_api -d new_api -t -A -F '|' -c \\"SELECT request_id, prompt_tokens, completion_tokens, quota, created_time FROM logs WHERE request_id IN (${idList})\\""`,
+  const logsRaw = remote(
+    `docker exec ${CONTROL_DB} psql -U new_api -d new_api -t -A -F '|' -c "SELECT request_id, prompt_tokens, completion_tokens, quota, created_at FROM logs WHERE request_id IN (${idList})"`,
   );
-  const ledgerRaw = ssh(
-    `"docker exec ${CONTROL_DB} psql -U new_api -d new_api -t -A -F '|' -c \\"SELECT request_id, entry_type, amount FROM quota_ledger_entries WHERE request_id IN (${idList}) ORDER BY id\\""`,
+  const ledgerRaw = remote(
+    `docker exec ${CONTROL_DB} psql -U new_api -d new_api -t -A -F '|' -c "SELECT request_id, entry_type, amount FROM quota_ledger_entries WHERE request_id IN (${idList}) ORDER BY id"`,
   );
   const gatewayLogs = logsRaw
     .split("\n")
@@ -156,6 +160,9 @@ async function fetchRemote() {
 
 async function main() {
   const dataDirArg = process.argv.find((arg) => arg.startsWith("--data-dir="))?.split("=")[1];
+  if (process.argv.includes("--local") && dataDirArg) {
+    throw new Error("--local 与 --data-dir 不能同时使用");
+  }
   const graceMinutes = Number(
     process.argv.find((arg) => arg.startsWith("--grace-minutes="))?.split("=")[1] || 10,
   );

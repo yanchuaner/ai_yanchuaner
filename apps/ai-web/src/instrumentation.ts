@@ -16,8 +16,33 @@ export async function register() {
   }
 
   if (process.env.NODE_ENV === "production") {
+    const { readdir, stat, unlink } = await import("node:fs/promises");
     const { runDataMigrations } = await import("@/lib/data-migrations");
     const dataDir = process.env.AI_WEB_DATA_DIR?.trim() || "/data";
+    const now = Date.now();
+    const tmpMaxAgeMs = 24 * 60 * 60 * 1000;
+    async function cleanOrphanTmp(dir: string): Promise<void> {
+      let entries;
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const target = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!entry.name.startsWith(".")) await cleanOrphanTmp(target);
+        } else if (entry.name.endsWith(".tmp")) {
+          try {
+            const info = await stat(target);
+            if (now - info.mtimeMs > tmpMaxAgeMs) await unlink(target);
+          } catch {
+            // 文件已被删除或不可读时忽略。
+          }
+        }
+      }
+    }
+    await cleanOrphanTmp(dataDir);
     const backupDir = path.join(
       dataDir,
       ".migration-backups",

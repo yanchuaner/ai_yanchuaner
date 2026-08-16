@@ -1,7 +1,7 @@
 # 燕中 AI 开发清单
 
 更新日期：2026-08-17  
-当前执行项：`无（R2 验收完成）`  
+当前执行项：`R3.1 生产可靠性收口（AI-70..AI-77）`
 适用仓库：`ai_yanchuaner`
 
 本文只维护燕中 AI 当前可执行的开发队列。生态阶段以 `../docs/燕中生态项目关系.txt` 为准，系统边界以 `../docs/architecture.md` 和 `../docs/contracts.md` 为准，本仓实现方向以 `docs/architecture.md` 为准。
@@ -310,3 +310,75 @@
 - 外部插件与插件市场：只有两个真实能力/适配器实现、scope、隔离、签名、禁用和审计门禁完成后才立项。
 - 数据库迁移：只有文件模式达到已测量的容量、多实例或事务边界后才通过 ADR 选择实现。
 - 公开角色、知识或世界分享：需要独立版权、隐私、审核、举报、撤回和删除设计。
+
+## M7：生产可靠性收口（R3.1）
+
+### AI-70 启用 main 分支保护与 required check
+
+依赖：无。
+
+- [x] 在 GitHub 仓库设置启用分支保护：required status check `ai-web`、enforce admins、禁止 force push 与分支删除。
+- [x] 使用必然失败的临时 PR 实测 `mergeStateStatus=BLOCKED`，验证后关闭并删除临时分支。
+
+完成定义：失败 CI 无法合并到 main；直接 push/force push 被保护规则拒绝。
+
+### AI-71 磁盘水位告警
+
+依赖：无。
+
+- [x] `disk-governance.sh` 支持 `--check`，达到 `AI_WEB_DISK_ALERT_PERCENT`（默认 85）时输出 `DISK_ALERT` 并返回退出码 1。
+- [x] 每周备份自动执行治理与检查；生产实测 77% < 85%，退出码 0。
+
+完成定义：磁盘接近阈值时运维可被脚本退出码/日志提醒。
+
+### AI-72 观测事件真实生成 durationMs/outcome
+
+依赖：无。
+
+- [x] 工作流运行时为 run/step 的 completed/failed/cancelled/degraded 生成 `durationMs` 与 `outcome`。
+- [x] 单元测试断言成功/失败/取消/超时路径字段；生产真实聊天事件包含 `durationMs=936 outcome=success`。
+
+完成定义：生产观测文件中的终态事件不再缺少 duration/outcome。
+
+### AI-73 health-check 纳入 ai-web
+
+依赖：无。
+
+- [x] `health-check.sh` 通过 `docker compose port` 定位 ai-web 并请求 `/api/health`，服务列表包含 ai-web。
+- [x] 生产执行 `./scripts/health-check.sh` 输出“燕中 AI 服务健康”。
+
+完成定义：内部健康脚本覆盖四个服务。
+
+### AI-74 配置错误 fail-fast
+
+依赖：无。
+
+- [x] 新增 `instrumentation.ts`：启动时校验配置，无效即 `process.exit(1)`。
+- [x] 本地与生产主机实测：缺配置时容器启动退出码 1，并输出 `[startup] AI Web 配置无效`。
+
+完成定义：配置错误不再以 503 空转。
+
+### AI-75 消息 schemaVersion 与启动迁移
+
+依赖：无。
+
+- [x] `appendMessage` 在仓储边界写入 `schemaVersion=1.0`，拒绝不支持的版本。
+- [x] 生产启动自动执行 `runDataMigrations`（备份到 `.migration-backups`）；实测 7 个文件升级，消息 schemaVersion 变为 `1.0`。
+
+完成定义：新消息带版本，存量数据启动即升级且可回滚。
+
+### AI-76 账本自动对账
+
+依赖：无。
+
+- [x] 新增 `scripts/reconcile-ledger.mjs`：比对本地消息 request_id/usage 与网关 logs/quota_ledger_entries，报告缺日志、缺账本、悬挂 reserve、usage/金额不一致。
+- [x] 纯逻辑测试 6 条通过；生产 `--local` 实测 34 条消息/18 个 request_id/36 条账本，`mismatches=0`。
+
+完成定义：对账可定时执行并输出 machine-readable report。
+
+### AI-77 写中断 tmp 残留清理
+
+依赖：无。
+
+- [ ] 生产启动自动清理超过 24 小时的孤儿 `*.tmp` 文件（`instrumentation.ts`）。
+- [ ] 生产演练：注入过期 tmp 文件 → 重启容器 → 确认被清理。

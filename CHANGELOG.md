@@ -18,6 +18,7 @@
 - 观测事件现在真实生成 `durationMs` 与 `outcome`，不再只有字段白名单。
 - `scripts/health-check.sh` 纳入 ai-web 服务。
 - 新消息自动写入 `schemaVersion=1.0`，生产启动自动执行数据迁移。
+- 生产启动自动清理超过 24 小时的孤儿 `.tmp` 写入残留。
 
 ## [v1.0.0] - 2026-08-17
 

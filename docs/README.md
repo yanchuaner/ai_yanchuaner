@@ -56,7 +56,6 @@ node scripts/acceptance/run-fault-injection.mjs --scenario stream-abort
 - 备份离站副本仍为人工同步。
 - 请求去重注册表为单进程内存实现。
 - 观测查询仍为全文件扫描，无索引。
-- 写中断可能残留 `.tmp` 文件，暂无自动清理。
 - 同键去重 TTL（10 分钟）后的重发语义需产品确认。
 
 ## 历史与验收记录
