@@ -28,6 +28,37 @@ export type ConversationSummary = {
   archived?: boolean;
 };
 
+export type ConversationInput = {
+  mode?: ChatMode;
+  persona?: Persona;
+  cast?: Persona[];
+  director?: Persona;
+  world?: {
+    worldId: string;
+    snapshot: {
+      title: string;
+      description: string;
+      timeline: string;
+      outline: string;
+    };
+  };
+  userRole?: {
+    name: string;
+    avatar?: string;
+    description: string;
+    sourcePersonaId?: string;
+  };
+};
+
+export type ConversationDetail = ConversationInput & {
+  id: string;
+  title: string;
+  updatedAt: number;
+  pinned?: boolean;
+  archived?: boolean;
+  messages: ChatMessage[];
+};
+
 export type AppView = "home" | "chat" | "personas" | "worlds";
 
 export type PersonaWithMeta = {

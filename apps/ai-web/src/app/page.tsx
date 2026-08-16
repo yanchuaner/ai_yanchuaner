@@ -41,6 +41,25 @@ import {
   type AccountQuotaInput,
   type AccountSession,
 } from "@/lib/account";
+import {
+  appendConversationMessage,
+  clearConversationMemory,
+  ConversationActionError,
+  createConversation,
+  deleteConversation,
+  exportConversation,
+  getConversationDetail,
+  getConversationMemory,
+  listConversations,
+  refreshConversationMemory,
+  updateConversation,
+} from "@/lib/conversation-actions";
+import {
+  ChatActionError,
+  requestGroupSchedule,
+  streamChatCompletion,
+  type ChatRequestMessage,
+} from "@/lib/chat-actions";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
   AppView,
@@ -176,6 +195,22 @@ export default function HomePage() {
     return error instanceof Error ? error.message : "操作失败。";
   }
 
+  function isSessionError(error: unknown): boolean {
+    return (
+      (error instanceof AccountActionError && error.code === "unauthenticated") ||
+      (error instanceof ConversationActionError && error.code === "unauthenticated") ||
+      (error instanceof ChatActionError && error.code === "unauthenticated")
+    );
+  }
+
+  function handleConversationError(error: unknown): string | null {
+    if (isSessionError(error)) {
+      handleSessionExpired();
+      return null;
+    }
+    return error instanceof Error ? error.message : "操作失败。";
+  }
+
   async function loadBalance() {
     try {
       const account = await loadAccountBalance();
@@ -189,27 +224,20 @@ export default function HomePage() {
   async function ensureConversation(): Promise<string | null> {
     if (conversationId) return conversationId;
     try {
-      const response = await fetch("/api/chat/conversations", { method: "POST", cache: "no-store" });
-      const body = await response.json();
-      if (body.conversation?.id) {
-        setConversationId(body.conversation.id);
-        setConversations((current) => [body.conversation, ...current]);
-        return body.conversation.id;
-      }
+      const conversation = await createConversation();
+      setConversationId(conversation.id);
+      setConversations((current) => [conversation, ...current]);
+      return conversation.id;
     } catch {}
     return null;
   }
 
   async function loadConversations() {
     try {
-      const response = await fetch("/api/chat/conversations", { cache: "no-store" });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      const list = await response.json();
-      setConversations(Array.isArray(list.conversations) ? list.conversations : []);
-    } catch {}
+      setConversations(await listConversations());
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function loadPersonas() {
@@ -546,11 +574,7 @@ export default function HomePage() {
       markLatest(message.id);
       setPrompt("");
       if (conversationId) {
-        await fetch(`/api/chat/conversations/${conversationId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(message),
-        }).catch(() => {});
+        await appendConversationMessage(conversationId, message).catch(() => {});
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "图片生成失败。");
@@ -629,33 +653,31 @@ export default function HomePage() {
     abortRef.current?.abort();
     setView("chat");
     setError("");
-    const response = await fetch(`/api/chat/conversations/${id}`, { cache: "no-store" });
-    if (response.status === 401) {
-      handleSessionExpired();
-      return;
+    try {
+      const detail = await getConversationDetail(id);
+      setConversationId(detail.id);
+      setMessages(detail.messages);
+      setLatestMessageIds(new Set());
+      setActivePersona(detail.persona ?? undefined);
+      setActiveCast(detail.cast ?? []);
+      setActiveWorldTitle(detail.world?.snapshot.title ?? null);
+      setActiveUserRoleName(detail.userRole?.name ?? null);
+      setLastKnowledgeHits(null);
+      void loadMemoryForConversation(id);
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) setError(message);
     }
-    const detailResponse = await response.json();
-    if (!Array.isArray(detailResponse.messages)) return;
-    setConversationId(id);
-    setMessages(detailResponse.messages);
-    setLatestMessageIds(new Set());
-    setActivePersona(detailResponse.persona ?? undefined);
-    setActiveCast(Array.isArray(detailResponse.cast) ? detailResponse.cast : []);
-    setActiveWorldTitle(detailResponse.world?.snapshot.title ?? null);
-    setActiveUserRoleName(detailResponse.userRole?.name ?? null);
-    setLastKnowledgeHits(null);
-    void loadMemoryForConversation(id);
   }
 
   async function loadMemoryForConversation(id: string) {
     try {
-      const response = await fetch(`/api/chat/conversations/${id}/memory`, { cache: "no-store" });
-      if (response.ok) {
-        const body = await response.json();
-        setActiveMemory(body.memory?.summary ?? null);
-        setMemoryState("idle");
-      }
-    } catch {}
+      const memory = await getConversationMemory(id);
+      setActiveMemory(memory.summary);
+      setMemoryState("idle");
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   function openUserKnowledgeDrawer() {
@@ -713,24 +735,24 @@ export default function HomePage() {
   async function triggerMemory(conversationId: string) {
     setMemoryState("generating");
     try {
-      const response = await fetch(`/api/chat/conversations/${conversationId}/memory`, { method: "POST" });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) {
-        setMemoryState("error");
-        return;
-      }
-      if (body?.updated && body.memory?.summary) setActiveMemory(body.memory.summary);
+      const result = await refreshConversationMemory(conversationId);
+      if (result.updated && result.summary) setActiveMemory(result.summary);
       setMemoryState("idle");
-    } catch {
+    } catch (error) {
+      handleConversationError(error);
       setMemoryState("error");
     }
   }
 
   async function clearMemory() {
     if (!conversationId) return;
-    await fetch(`/api/chat/conversations/${conversationId}/memory`, { method: "DELETE" });
-    setActiveMemory(null);
-    setMemoryState("idle");
+    try {
+      await clearConversationMemory(conversationId);
+      setActiveMemory(null);
+      setMemoryState("idle");
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   function navigate(nextView: AppView) {
@@ -745,16 +767,9 @@ export default function HomePage() {
   }
 
   async function startPlainConversation() {
-    const response = await fetch("/api/chat/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "chat" }),
-      cache: "no-store",
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.conversation?.id) throw new Error(body?.error || "创建会话失败。");
-    setConversationId(body.conversation.id);
-    setConversations((current) => [body.conversation, ...current]);
+    const conversation = await createConversation({ mode: "chat" });
+    setConversationId(conversation.id);
+    setConversations((current) => [conversation, ...current]);
     setMessages([]);
     setLatestMessageIds(new Set());
     setActivePersona(undefined);
@@ -790,14 +805,7 @@ export default function HomePage() {
       target = body.persona;
       await loadPersonas();
     }
-    const response = await fetch("/api/chat/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "roleplay", persona: target }),
-      cache: "no-store",
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.conversation?.id) throw new Error(body?.error || "创建会话失败。");
+    const conversation = await createConversation({ mode: "roleplay", persona: target });
     if (knowledge) {
       try {
         await uploadInitialKnowledge(target.id, knowledge);
@@ -805,8 +813,8 @@ export default function HomePage() {
         setError(reason instanceof Error ? reason.message : "初始资料上传失败。");
       }
     }
-    setConversationId(body.conversation.id);
-    setConversations((current) => [body.conversation, ...current]);
+    setConversationId(conversation.id);
+    setConversations((current) => [conversation, ...current]);
     setMessages([]);
     setLatestMessageIds(new Set());
     setActivePersona(target);
@@ -827,16 +835,9 @@ export default function HomePage() {
     userRole?: { name: string; description: string },
   ) {
     const selectedWorld = world && world.snapshot ? world : undefined;
-    const response = await fetch("/api/chat/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "group", cast, director, world: selectedWorld, userRole }),
-      cache: "no-store",
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.conversation?.id) throw new Error(body?.error || "创建群聊失败。");
-    setConversationId(body.conversation.id);
-    setConversations((current) => [body.conversation, ...current]);
+    const conversation = await createConversation({ mode: "group", cast, director, world: selectedWorld, userRole });
+    setConversationId(conversation.id);
+    setConversations((current) => [conversation, ...current]);
     setMessages([]);
     setLatestMessageIds(new Set());
     setActivePersona(undefined);
@@ -847,38 +848,23 @@ export default function HomePage() {
     setSetupOpen(false);
     setDetail({ open: false });
     setView("chat");
-    void runGroupOpening(body.conversation.id, cast.map((persona) => persona.name));
+    void runGroupOpening(conversation.id, cast.map((persona) => persona.name));
   }
 
   async function runGroupOpening(targetConversationId: string, castNames: string[]) {
-    const openingMessages = [{ role: "user" as const, content: "开始群聊" }];
+    const openingMessages: ChatRequestMessage[] = [{ role: "user", content: "开始群聊" }];
     const traceId = createTraceId();
     try {
-      const scheduleResponse = await fetch("/api/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Client-Request-ID": createClientRequestId(),
-          "X-Trace-ID": traceId,
-        },
-        body: JSON.stringify({
-          model,
-          messages: openingMessages,
-          knowledge: false,
-          conversationId: targetConversationId,
-          groupSchedule: true,
-          opening: true,
-        }),
+      const schedule = await requestGroupSchedule({
+        model,
+        messages: openingMessages,
+        knowledge: false,
+        conversationId: targetConversationId,
+        opening: true,
+        clientRequestId: createClientRequestId(),
+        traceId,
       });
-      if (scheduleResponse.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      const scheduleBody = await scheduleResponse.json().catch(() => null);
-      if (!scheduleResponse.ok || !Array.isArray(scheduleBody?.speakers) || scheduleBody.speakers.length === 0) {
-        return;
-      }
-      const speakers = scheduleBody.speakers as { id: string; name: string }[];
+      const speakers = schedule.speakers;
       const turnKey = crypto.randomUUID();
       const messageIdBySpeaker = new Map(
         speakers.map((speaker) => [speaker.id, `group-${speaker.id}-${turnKey}`]),
@@ -895,47 +881,23 @@ export default function HomePage() {
       markLatest(...messageIdBySpeaker.values());
       await Promise.allSettled(
         speakers.map(async (speaker) => {
-          const response = await fetch("/api/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Client-Request-ID": createClientRequestId(),
-              "X-Trace-ID": traceId,
-            },
-            body: JSON.stringify({
-              model,
-              messages: openingMessages,
-              knowledge: false,
-              conversationId: targetConversationId,
-              speakerId: speaker.id,
-              opening: true,
-            }),
-          });
-          if (response.status === 401) {
-            handleSessionExpired();
-            return;
-          }
-          if (!response.ok || !response.body) return;
           const messageId = messageIdBySpeaker.get(speaker.id) as string;
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
           const prefixStripper = createSpeakerPrefixStripper(speaker.name);
-          let buffer = "";
           let content = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            buffer += decoder.decode(value, { stream: !done });
-            const events = buffer.split("\n\n");
-            buffer = events.pop() ?? "";
-            for (const block of events) {
-              for (const line of block.split("\n")) {
-                if (!line.startsWith("data:")) continue;
-                const data = line.slice(5).trim();
-                if (!data || data === "[DONE]") continue;
-                const chunk = JSON.parse(data);
-                if (typeof chunk?.error?.message === "string") throw new Error(chunk.error.message);
-                const delta = chunk?.choices?.[0]?.delta?.content;
-                if (typeof delta === "string" && delta.length > 0) {
+          try {
+            await streamChatCompletion(
+              {
+                model,
+                messages: openingMessages,
+                knowledge: false,
+                conversationId: targetConversationId,
+                speakerId: speaker.id,
+                opening: true,
+                clientRequestId: createClientRequestId(),
+                traceId,
+              },
+              {
+                onDelta: (delta) => {
                   const cleaned = prefixStripper.push(delta);
                   if (cleaned) {
                     content += cleaned;
@@ -945,32 +907,35 @@ export default function HomePage() {
                       ),
                     );
                   }
-                }
-              }
-            }
-            if (done) break;
+                },
+              },
+            );
+          } catch (error) {
+            if (isSessionError(error)) handleSessionExpired();
+            return;
           }
           if (!content) return;
           if (containsOtherSpeakerSpeech(content, speaker.name, castNames)) {
             setMessages((current) => current.filter((message) => message.id !== messageId));
             return;
           }
-          await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          try {
+            await appendConversationMessage(targetConversationId, {
               id: messageId,
               role: "assistant",
               content,
               personaId: speaker.id,
               traceId,
-            }),
-          }).catch(() => {});
+            });
+          } catch {
+            // 开场保存失败不阻断后续会话。
+          }
         }),
       );
       await loadBalance();
       await loadConversations();
-    } catch {
+    } catch (error) {
+      if (isSessionError(error)) handleSessionExpired();
       // 开场失败不阻断，用户直接说话即可。
     }
   }
@@ -1010,17 +975,22 @@ export default function HomePage() {
           : conversation,
       ),
     );
-    const response = await fetch(`/api/chat/conversations/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    if (!response.ok) await loadConversations();
+    try {
+      await updateConversation(id, patch);
+    } catch (error) {
+      handleConversationError(error);
+      await loadConversations();
+    }
   }
 
   async function deleteConversationById(id: string) {
     if (!window.confirm("删除该会话？此操作不可恢复。")) return;
-    await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+    try {
+      await deleteConversation(id);
+    } catch (error) {
+      handleConversationError(error);
+      return;
+    }
     if (id === conversationId) {
       setConversationId(null);
       setMessages([]);
@@ -1032,15 +1002,19 @@ export default function HomePage() {
   }
 
   async function exportConversationById(id: string) {
-    const response = await fetch(`/api/chat/conversations/${id}/export`);
-    if (!response.ok) return;
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `yanchuaner-ai-conversation-${id}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      const exported = await exportConversation(id);
+      const blob = new Blob([exported.text], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = exported.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) setError(message);
+    }
   }
 
   function openPersonaDetail(persona: Persona, mode: "view" | "edit" | "create" = "view") {
@@ -1285,19 +1259,15 @@ export default function HomePage() {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: userMessage.id, role: "user", content: userMessage.content }),
+        await appendConversationMessage(targetConversationId, {
+          id: userMessage.id,
+          role: "user",
+          content: userMessage.content,
         });
         await runGroupTurn(targetConversationId, requestMessages, controller, traceId);
       } catch (reason) {
-        const message = reason instanceof Error ? reason.message : "模型请求失败。";
-        if (message.includes("登录会话已失效")) {
-          handleSessionExpired();
-          return;
-        }
-        if (!controller.signal.aborted) {
+        const message = handleConversationError(reason);
+        if (!controller.signal.aborted && message) {
           setError(message);
           setPrompt(content);
           lastFailedRef.current = { content, clientRequestId };
@@ -1316,102 +1286,57 @@ export default function HomePage() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: userMessage.id, role: "user", content: userMessage.content }),
+      await appendConversationMessage(targetConversationId, {
+        id: userMessage.id,
+        role: "user",
+        content: userMessage.content,
       });
-      const response = await fetch("/api/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Client-Request-ID": clientRequestId,
-          "X-Trace-ID": traceId,
-        },
-        body: JSON.stringify({
+      const result = await streamChatCompletion(
+        {
           model,
           messages: requestMessages,
           knowledge:
-            (activeMode === "roleplay" || activeMode === "group") && Boolean(activePersona || activeCast.length) && knowledgeEnabled,
+            (activeMode === "roleplay" || activeMode === "group") &&
+            Boolean(activePersona || activeCast.length) &&
+            knowledgeEnabled,
           conversationId: targetConversationId,
-        }),
-        signal: controller.signal,
-      });
-      const requestId = response.headers.get("x-request-id") || "";
-      const knowledgeHits = Number(response.headers.get("x-yan-knowledge-hits") || 0);
-      setLastKnowledgeHits(knowledgeHits > 0 ? knowledgeHits : null);
-      if (!response.ok || !response.body) {
-        const body = await response.json().catch(() => null);
-        const message =
-          body?.code === "SESSION_REVOKED"
-            ? "登录会话已失效，请重新登录。"
-            : response.status === 429
-              ? "请求过于频繁，请稍后再试。"
-              : body?.error || "模型请求失败。";
-        throw new Error(message);
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let receivedContent = false;
-      let assistantContent = "";
-      let lastUsage: { prompt_tokens?: number; completion_tokens?: number } | null = null;
-      while (true) {
-        const { done, value } = await reader.read();
-        buffer += decoder.decode(value, { stream: !done });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() ?? "";
-        for (const block of events) {
-          for (const line of block.split("\n")) {
-            if (!line.startsWith("data:")) continue;
-            const data = line.slice(5).trim();
-            if (!data || data === "[DONE]") continue;
-            const chunk = JSON.parse(data);
-            if (typeof chunk?.error?.message === "string") throw new Error(chunk.error.message);
-            if (chunk?.usage) lastUsage = chunk.usage;
-            const delta = chunk?.choices?.[0]?.delta?.content;
-            if (typeof delta === "string" && delta.length > 0) {
-              receivedContent = true;
-              assistantContent += delta;
-              appendAssistantContent(assistantMessage.id, delta);
-            }
-          }
-        }
-        if (done) break;
-      }
-      if (!receivedContent) throw new Error("模型未返回可显示内容。");
+          clientRequestId,
+          traceId,
+          signal: controller.signal,
+        },
+        {
+          onDelta: (delta) => appendAssistantContent(assistantMessage.id, delta),
+        },
+      );
+      setLastKnowledgeHits(result.knowledgeHits);
       setMessages((current) =>
         current.map((message) =>
           message.id === assistantMessage.id
             ? {
                 ...message,
-                requestId,
-                usage: lastUsage
+                requestId: result.requestId,
+                usage: result.usage
                   ? {
-                      prompt: lastUsage.prompt_tokens ?? 0,
-                      completion: lastUsage.completion_tokens ?? 0,
+                      prompt: result.usage.prompt ?? 0,
+                      completion: result.usage.completion ?? 0,
                     }
                   : undefined,
               }
             : message,
         ),
       );
-      await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: assistantMessage.id,
-          role: "assistant",
-          content: assistantContent,
-          traceId,
-          requestId,
-          usage: lastUsage
-            ? {
-                prompt: lastUsage.prompt_tokens ?? 0,
-                completion: lastUsage.completion_tokens ?? 0,
-              }
-            : undefined,
-        }),
+      await appendConversationMessage(targetConversationId, {
+        id: assistantMessage.id,
+        role: "assistant",
+        content: result.content,
+        traceId,
+        requestId: result.requestId,
+        usage: result.usage
+          ? {
+              prompt: result.usage.prompt ?? 0,
+              completion: result.usage.completion ?? 0,
+            }
+          : undefined,
       });
       await loadBalance();
       await loadConversations();
@@ -1420,12 +1345,8 @@ export default function HomePage() {
         void triggerMemory(targetConversationId);
       }
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "模型请求失败。";
-      if (message.includes("登录会话已失效")) {
-        handleSessionExpired();
-        return;
-      }
-      if (!controller.signal.aborted) {
+      const message = handleConversationError(reason);
+      if (!controller.signal.aborted && message) {
         setError(message);
         setPrompt(content);
         lastFailedRef.current = { content, clientRequestId };
@@ -1441,35 +1362,20 @@ export default function HomePage() {
 
   async function runGroupTurn(
     targetConversationId: string,
-    requestMessages: { role: "system" | "user" | "assistant"; content: string }[],
+    requestMessages: ChatRequestMessage[],
     controller: AbortController,
     traceId: string,
   ) {
-    const scheduleResponse = await fetch("/api/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Client-Request-ID": createClientRequestId(),
-        "X-Trace-ID": traceId,
-      },
-      body: JSON.stringify({
-        model,
-        messages: requestMessages,
-        knowledge: Boolean(activeCast.length) && knowledgeEnabled,
-        conversationId: targetConversationId,
-        groupSchedule: true,
-      }),
+    const schedule = await requestGroupSchedule({
+      model,
+      messages: requestMessages,
+      knowledge: Boolean(activeCast.length) && knowledgeEnabled,
+      conversationId: targetConversationId,
+      clientRequestId: createClientRequestId(),
+      traceId,
       signal: controller.signal,
     });
-    if (scheduleResponse.status === 401) {
-      handleSessionExpired();
-      throw new Error("登录会话已失效，请重新登录。");
-    }
-    const scheduleBody = await scheduleResponse.json().catch(() => null);
-    if (!scheduleResponse.ok || !Array.isArray(scheduleBody?.speakers) || scheduleBody.speakers.length === 0) {
-      throw new Error(scheduleBody?.error || "群聊调度失败，请稍后再试。");
-    }
-    const speakers = scheduleBody.speakers as { id: string; name: string }[];
+    const speakers = schedule.speakers;
     const turnKey = crypto.randomUUID();
     const messageIdBySpeaker = new Map(speakers.map((speaker) => [speaker.id, `group-${speaker.id}-${turnKey}`]));
     setMessages((current) => [
@@ -1484,53 +1390,23 @@ export default function HomePage() {
     markLatest(...messageIdBySpeaker.values());
     const results = await Promise.allSettled(
       speakers.map(async (speaker) => {
-        const response = await fetch("/api/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Client-Request-ID": createClientRequestId(),
-            "X-Trace-ID": traceId,
-          },
-          body: JSON.stringify({
-            model,
-            messages: requestMessages,
-            knowledge: Boolean(activeCast.length) && knowledgeEnabled,
-            conversationId: targetConversationId,
-            speakerId: speaker.id,
-          }),
-          signal: controller.signal,
-        });
-        const requestId = response.headers.get("x-request-id") || "";
-        if (response.status === 401) {
-          handleSessionExpired();
-          throw new Error("登录会话已失效，请重新登录。");
-        }
-        if (!response.ok || !response.body) {
-          const body = await response.json().catch(() => null);
-          throw new Error(body?.error || `${speaker.name} 发言失败。`);
-        }
         const messageId = messageIdBySpeaker.get(speaker.id) as string;
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
         const prefixStripper = createSpeakerPrefixStripper(speaker.name);
-        let buffer = "";
         let content = "";
-        let usage: { prompt_tokens?: number; completion_tokens?: number } | null = null;
-        while (true) {
-          const { done, value } = await reader.read();
-          buffer += decoder.decode(value, { stream: !done });
-          const events = buffer.split("\n\n");
-          buffer = events.pop() ?? "";
-          for (const block of events) {
-            for (const line of block.split("\n")) {
-              if (!line.startsWith("data:")) continue;
-              const data = line.slice(5).trim();
-              if (!data || data === "[DONE]") continue;
-              const chunk = JSON.parse(data);
-              if (typeof chunk?.error?.message === "string") throw new Error(chunk.error.message);
-              if (chunk?.usage) usage = chunk.usage;
-              const delta = chunk?.choices?.[0]?.delta?.content;
-              if (typeof delta === "string" && delta.length > 0) {
+        try {
+          const result = await streamChatCompletion(
+            {
+              model,
+              messages: requestMessages,
+              knowledge: Boolean(activeCast.length) && knowledgeEnabled,
+              conversationId: targetConversationId,
+              speakerId: speaker.id,
+              clientRequestId: createClientRequestId(),
+              traceId,
+              signal: controller.signal,
+            },
+            {
+              onDelta: (delta) => {
                 const cleaned = prefixStripper.push(delta);
                 if (cleaned) {
                   content += cleaned;
@@ -1540,56 +1416,54 @@ export default function HomePage() {
                     ),
                   );
                 }
-              }
-            }
+              },
+            },
+          );
+          if (!content) throw new ChatActionError("empty", `${speaker.name} 未返回可显示内容。`);
+          if (containsOtherSpeakerSpeech(content, speaker.name, activeCast.map((persona) => persona.name))) {
+            setMessages((current) =>
+              current.filter(
+                (message) =>
+                  !(message.role === "assistant" && message.personaId === speaker.id && message.id === messageId),
+              ),
+            );
+            return { skipped: true as const, name: speaker.name };
           }
-          if (done) break;
-        }
-        if (!content) throw new Error(`${speaker.name} 未返回可显示内容。`);
-        if (containsOtherSpeakerSpeech(content, speaker.name, activeCast.map((persona) => persona.name))) {
           setMessages((current) =>
-            current.filter(
-              (message) =>
-                !(message.role === "assistant" && message.personaId === speaker.id && message.id === messageId),
+            current.map((message) =>
+              message.id === messageId
+                ? {
+                    ...message,
+                    requestId: result.requestId,
+                    usage: result.usage
+                      ? {
+                          prompt: result.usage.prompt ?? 0,
+                          completion: result.usage.completion ?? 0,
+                        }
+                      : undefined,
+                  }
+                : message,
             ),
           );
-          return { skipped: true as const, name: speaker.name };
-        }
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === messageId
-              ? {
-                  ...message,
-                  requestId,
-                  usage: usage
-                    ? {
-                        prompt: usage.prompt_tokens ?? 0,
-                        completion: usage.completion_tokens ?? 0,
-                      }
-                    : undefined,
-                }
-              : message,
-          ),
-        );
-        await fetch(`/api/chat/conversations/${targetConversationId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          await appendConversationMessage(targetConversationId, {
             id: messageId,
             role: "assistant",
             content,
             personaId: speaker.id,
             traceId,
-            requestId,
-            usage: usage
+            requestId: result.requestId,
+            usage: result.usage
               ? {
-                  prompt: usage.prompt_tokens ?? 0,
-                  completion: usage.completion_tokens ?? 0,
+                  prompt: result.usage.prompt ?? 0,
+                  completion: result.usage.completion ?? 0,
                 }
               : undefined,
-          }),
-        });
-        return { skipped: false as const };
+          });
+          return { skipped: false as const };
+        } catch (error) {
+          if (isSessionError(error)) handleSessionExpired();
+          throw error;
+        }
       }),
     );
     const skipped = results
