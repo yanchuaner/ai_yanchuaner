@@ -19,6 +19,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     content: typeof candidate.content === "string" ? candidate.content : "",
     personaId: typeof candidate.personaId === "string" ? candidate.personaId : undefined,
     imageUrl: typeof candidate.imageUrl === "string" ? candidate.imageUrl : undefined,
+    traceId: typeof candidate.traceId === "string" ? candidate.traceId : undefined,
     requestId: typeof candidate.requestId === "string" ? candidate.requestId : undefined,
     usage:
       candidate.usage && typeof candidate.usage === "object"

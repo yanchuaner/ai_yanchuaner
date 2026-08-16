@@ -46,3 +46,30 @@ test("chat forwarding rejects a successful non-SSE response", async () => {
   assert.equal(response.status, 502);
   assert.match(await response.text(), /未返回流式响应/);
 });
+
+test("chat forwarding propagates trace and client request ids both ways", async () => {
+  let seenClientRequestId = "";
+  let seenTraceId = "";
+  const fetcher: typeof fetch = async (_input, init) => {
+    const headers = new Headers(init?.headers);
+    seenClientRequestId = headers.get("x-client-request-id") ?? "";
+    seenTraceId = headers.get("x-trace-id") ?? "";
+    return new Response("data: [DONE]\n\n", {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "X-Request-Id": "req-42" },
+    });
+  };
+  const response = await forwardChatCompletion(
+    new URL("https://api.example.test"),
+    `sk-yc_${"a".repeat(64)}`,
+    { model: "deepseek-chat", messages: [{ role: "user", content: "hello" }] },
+    fetcher,
+    undefined,
+    { clientRequestId: "client-1", traceId: "trace-1" },
+  );
+  assert.equal(seenClientRequestId, "client-1");
+  assert.equal(seenTraceId, "trace-1");
+  assert.equal(response.headers.get("x-client-request-id"), "client-1");
+  assert.equal(response.headers.get("x-trace-id"), "trace-1");
+  assert.equal(response.headers.get("x-request-id"), "req-42");
+});

@@ -10,6 +10,7 @@ export type ChatMessage = {
   content: string;
   personaId?: string;
   imageUrl?: string;
+  traceId?: string;
   requestId?: string;
   usage?: { prompt: number; completion: number };
 };
