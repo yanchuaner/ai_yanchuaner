@@ -61,5 +61,10 @@ find "$backup_root" -mindepth 1 -maxdepth 1 -type d \
   -regex '.*/[0-9]{8}T[0-9]{6}Z' \
   -mtime "+$retention_days" -exec rm -rf -- {} +
 
+echo "正在执行磁盘治理（失败不阻断备份）..."
+if ! bash scripts/disk-governance.sh; then
+  echo "磁盘治理失败，请手动检查磁盘水位。" >&2
+fi
+
 echo "备份完成：$backup_dir"
 echo "该目录包含真实密钥，必须保存在受限位置。"
