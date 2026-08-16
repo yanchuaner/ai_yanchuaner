@@ -1,7 +1,7 @@
 // 故事世界观：独立于角色库的剧本实体，群聊开本时快照进会话。
 
 import { randomUUID } from "node:crypto";
-import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
+import { readJsonFile, userStorePath, withFileLock, writeJsonFile } from "@/lib/store";
 
 export type World = {
   id: string;
@@ -130,22 +130,24 @@ export async function getWorld(userId: number, worldId: string): Promise<World |
 export async function createWorld(userId: number, input: WorldInput): Promise<World> {
   if (!isValidWorldInput(input)) throw new Error("world is invalid");
   const normalized = normalizeInput(input);
-  const store = await readStore(userId);
-  if (store.worlds.length >= MAX_WORLDS) throw new Error("world limit reached");
-  const now = Date.now();
-  const world: World = {
-    id: randomUUID(),
-    title: normalized.title,
-    description: normalized.description,
-    timeline: normalized.timeline,
-    outline: normalized.outline,
-    tags: normalized.tags,
-    createdAt: now,
-    updatedAt: now,
-  };
-  store.worlds.push(world);
-  await writeStore(userId, store);
-  return world;
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    if (store.worlds.length >= MAX_WORLDS) throw new Error("world limit reached");
+    const now = Date.now();
+    const world: World = {
+      id: randomUUID(),
+      title: normalized.title,
+      description: normalized.description,
+      timeline: normalized.timeline,
+      outline: normalized.outline,
+      tags: normalized.tags,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.worlds.push(world);
+    await writeStore(userId, store);
+    return world;
+  });
 }
 
 export async function updateWorld(
@@ -154,28 +156,32 @@ export async function updateWorld(
   input: WorldInput,
 ): Promise<World> {
   if (!isValidWorldInput(input)) throw new Error("world is invalid");
-  const store = await readStore(userId);
-  const index = store.worlds.findIndex((world) => world.id === worldId);
-  if (index < 0) throw new Error("world not found");
   const normalized = normalizeInput(input);
-  const updated: World = {
-    ...store.worlds[index],
-    title: normalized.title,
-    description: normalized.description,
-    timeline: normalized.timeline,
-    outline: normalized.outline,
-    tags: normalized.tags,
-    updatedAt: Date.now(),
-  };
-  store.worlds[index] = updated;
-  await writeStore(userId, store);
-  return updated;
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const index = store.worlds.findIndex((world) => world.id === worldId);
+    if (index < 0) throw new Error("world not found");
+    const updated: World = {
+      ...store.worlds[index],
+      title: normalized.title,
+      description: normalized.description,
+      timeline: normalized.timeline,
+      outline: normalized.outline,
+      tags: normalized.tags,
+      updatedAt: Date.now(),
+    };
+    store.worlds[index] = updated;
+    await writeStore(userId, store);
+    return updated;
+  });
 }
 
 export async function deleteWorld(userId: number, worldId: string): Promise<void> {
-  const store = await readStore(userId);
-  const next = store.worlds.filter((world) => world.id !== worldId);
-  if (next.length === store.worlds.length) throw new Error("world not found");
-  store.worlds = next;
-  await writeStore(userId, store);
+  await withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const next = store.worlds.filter((world) => world.id !== worldId);
+    if (next.length === store.worlds.length) throw new Error("world not found");
+    store.worlds = next;
+    await writeStore(userId, store);
+  });
 }

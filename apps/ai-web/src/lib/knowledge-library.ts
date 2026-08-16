@@ -3,7 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import { chunkText } from "@/lib/chunker";
-import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
+import { readJsonFile, userStorePath, withFileLock, writeJsonFile } from "@/lib/store";
 import { searchVectors } from "@/lib/vector-index";
 
 export type KnowledgeBase = {
@@ -245,11 +245,13 @@ export async function addKnowledgeDocument(
   model: string,
   embedder: KnowledgeEmbedder,
 ): Promise<{ document: KnowledgeDocument; model: string }> {
-  const store = await readStore(userId);
-  const knowledgeBase = await ensureKnowledgeBase(store, personaId, personaName, model);
-  const document = await addDocumentToKnowledgeBase(store, knowledgeBase, input, model, embedder);
-  await writeStore(userId, store);
-  return { document, model };
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const knowledgeBase = await ensureKnowledgeBase(store, personaId, personaName, model);
+    const document = await addDocumentToKnowledgeBase(store, knowledgeBase, input, model, embedder);
+    await writeStore(userId, store);
+    return { document, model };
+  });
 }
 
 export async function getUserKnowledgeSummary(userId: number): Promise<KnowledgeSummary> {
@@ -270,42 +272,50 @@ export async function addUserKnowledgeDocument(
   model: string,
   embedder: KnowledgeEmbedder,
 ): Promise<{ document: KnowledgeDocument; model: string }> {
-  const store = await readStore(userId);
-  const knowledgeBase = await ensureUserKnowledgeBase(store, model);
-  const document = await addDocumentToKnowledgeBase(store, knowledgeBase, input, model, embedder);
-  await writeStore(userId, store);
-  return { document, model };
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const knowledgeBase = await ensureUserKnowledgeBase(store, model);
+    const document = await addDocumentToKnowledgeBase(store, knowledgeBase, input, model, embedder);
+    await writeStore(userId, store);
+    return { document, model };
+  });
 }
 
 export async function deleteUserKnowledge(userId: number): Promise<void> {
-  const store = await readStore(userId);
-  const knowledgeBase = store.knowledgeBases.find((kb) => kb.scope === "user");
-  if (!knowledgeBase) return;
-  const kbId = knowledgeBase.id;
-  store.knowledgeBases = store.knowledgeBases.filter((kb) => kb.id !== kbId);
-  store.documents = store.documents.filter((document) => document.kbId !== kbId);
-  store.chunks = store.chunks.filter((chunk) => chunk.kbId !== kbId);
-  await writeStore(userId, store);
+  await withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const knowledgeBase = store.knowledgeBases.find((kb) => kb.scope === "user");
+    if (!knowledgeBase) return;
+    const kbId = knowledgeBase.id;
+    store.knowledgeBases = store.knowledgeBases.filter((kb) => kb.id !== kbId);
+    store.documents = store.documents.filter((document) => document.kbId !== kbId);
+    store.chunks = store.chunks.filter((chunk) => chunk.kbId !== kbId);
+    await writeStore(userId, store);
+  });
 }
 
 export async function deleteKnowledgeDocument(userId: number, documentId: string): Promise<void> {
-  const store = await readStore(userId);
-  const document = store.documents.find((item) => item.id === documentId);
-  if (!document) throw new Error("document not found");
-  store.documents = store.documents.filter((item) => item.id !== documentId);
-  store.chunks = store.chunks.filter((chunk) => chunk.documentId !== documentId);
-  await writeStore(userId, store);
+  await withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const document = store.documents.find((item) => item.id === documentId);
+    if (!document) throw new Error("document not found");
+    store.documents = store.documents.filter((item) => item.id !== documentId);
+    store.chunks = store.chunks.filter((chunk) => chunk.documentId !== documentId);
+    await writeStore(userId, store);
+  });
 }
 
 export async function deletePersonaKnowledge(userId: number, personaId: string): Promise<void> {
-  const store = await readStore(userId);
-  const knowledgeBase = store.knowledgeBases.find((kb) => kb.personaId === personaId);
-  if (!knowledgeBase) return;
-  const kbId = knowledgeBase.id;
-  store.knowledgeBases = store.knowledgeBases.filter((kb) => kb.id !== kbId);
-  store.documents = store.documents.filter((document) => document.kbId !== kbId);
-  store.chunks = store.chunks.filter((chunk) => chunk.kbId !== kbId);
-  await writeStore(userId, store);
+  await withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const knowledgeBase = store.knowledgeBases.find((kb) => kb.personaId === personaId);
+    if (!knowledgeBase) return;
+    const kbId = knowledgeBase.id;
+    store.knowledgeBases = store.knowledgeBases.filter((kb) => kb.id !== kbId);
+    store.documents = store.documents.filter((document) => document.kbId !== kbId);
+    store.chunks = store.chunks.filter((chunk) => chunk.kbId !== kbId);
+    await writeStore(userId, store);
+  });
 }
 
 export async function searchPersonaKnowledge(

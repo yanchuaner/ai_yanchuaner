@@ -23,6 +23,7 @@ export type ChatCompletionInput = {
 export type ChatActionCode =
   | "unauthenticated"
   | "rate_limited"
+  | "duplicate"
   | "invalid"
   | "empty"
   | "unavailable"
@@ -78,6 +79,7 @@ async function postChatCompletion(input: ChatCompletionInput, fetcher: typeof fe
 function throwForResponse(response: Response, body: unknown): never {
   if (response.status === 401) throw new ChatActionError("unauthenticated", "登录会话已失效。", 401);
   if (response.status === 429) throw new ChatActionError("rate_limited", "请求过于频繁，请稍后再试。", 429);
+  if (response.status === 409) throw new ChatActionError("duplicate", "该请求已提交，请勿重复发送。", 409);
   const message =
     body && typeof body === "object" && "error" in body && typeof (body as { error?: unknown }).error === "string"
       ? (body as { error: string }).error

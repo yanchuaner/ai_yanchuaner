@@ -1,6 +1,6 @@
 // 角色长期记忆：对话沉淀的摘要按角色保存，后续同角色会话自动带上。
 
-import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
+import { readJsonFile, userStorePath, withFileLock, writeJsonFile } from "@/lib/store";
 
 export type PersonaMemory = {
   personaId: string;
@@ -51,24 +51,28 @@ export async function savePersonaMemory(
 ): Promise<PersonaMemory> {
   const summary = memory.summary.trim();
   if (!summary || summary.length > MAX_SUMMARY_LENGTH) throw new Error("summary is invalid");
-  const store = await readStore(userId);
-  const saved: PersonaMemory = { ...memory, summary, updatedAt: Date.now() };
-  const existing = store.personaSummaries.findIndex((item) => item.personaId === memory.personaId);
-  if (existing >= 0) store.personaSummaries[existing] = saved;
-  else {
-    if (store.personaSummaries.length >= MAX_SUMMARIES) {
-      store.personaSummaries.shift();
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const saved: PersonaMemory = { ...memory, summary, updatedAt: Date.now() };
+    const existing = store.personaSummaries.findIndex((item) => item.personaId === memory.personaId);
+    if (existing >= 0) store.personaSummaries[existing] = saved;
+    else {
+      if (store.personaSummaries.length >= MAX_SUMMARIES) {
+        store.personaSummaries.shift();
+      }
+      store.personaSummaries.push(saved);
     }
-    store.personaSummaries.push(saved);
-  }
-  await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
-  return saved;
+    await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
+    return saved;
+  });
 }
 
 export async function clearPersonaMemory(userId: number, personaId: string): Promise<void> {
-  const store = await readStore(userId);
-  store.personaSummaries = store.personaSummaries.filter((memory) => memory.personaId !== personaId);
-  await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
+  await withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    store.personaSummaries = store.personaSummaries.filter((memory) => memory.personaId !== personaId);
+    await writeJsonFile(storePath(userId), store, MAX_STORE_BYTES);
+  });
 }
 
 export async function listPersonaMemories(userId: number): Promise<PersonaMemory[]> {

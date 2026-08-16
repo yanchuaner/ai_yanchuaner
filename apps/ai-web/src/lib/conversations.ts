@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isValidPersona, type Persona } from "@/lib/personas";
-import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
+import { readJsonFile, userStorePath, withFileLock, writeJsonFile } from "@/lib/store";
 
 export type StoredUsage = {
   prompt: number;
@@ -284,11 +284,13 @@ export async function getConversationDetail(userId: number, conversationId: stri
 }
 
 export async function deleteConversation(userId: number, conversationId: string): Promise<void> {
-  const store = await readStore(userId);
-  const next = store.conversations.filter((item) => item.id !== conversationId);
-  if (next.length === store.conversations.length) throw new Error("conversation not found");
-  store.conversations = next;
-  await writeStore(userId, store);
+  await withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const next = store.conversations.filter((item) => item.id !== conversationId);
+    if (next.length === store.conversations.length) throw new Error("conversation not found");
+    store.conversations = next;
+    await writeStore(userId, store);
+  });
 }
 
 export type CreateConversationOptions = {
@@ -304,56 +306,58 @@ export async function createConversation(
   userId: number,
   options: CreateConversationOptions = {},
 ): Promise<ConversationSummary> {
-  const mode = options.mode === "roleplay" ? "roleplay" : options.mode === "group" ? "group" : "chat";
-  let cast: Persona[] | undefined;
-  let director: Persona | undefined;
-  let world: StoredConversation["world"] | undefined;
-  let userRole: StoredConversation["userRole"] | undefined;
-  if (mode === "roleplay" && (!options.persona || !isValidPersona(options.persona))) {
-    throw new Error("persona is invalid");
-  }
-  if (mode === "group") {
-    cast = Array.isArray(options.cast) ? options.cast.filter(isValidPersona) : [];
-    if (cast.length < 2 || cast.length > 4 || new Set(cast.map((persona) => persona.id)).size !== cast.length) {
-      throw new Error("cast is invalid");
+  return withFileLock(storePath(userId), async () => {
+    const mode = options.mode === "roleplay" ? "roleplay" : options.mode === "group" ? "group" : "chat";
+    let cast: Persona[] | undefined;
+    let director: Persona | undefined;
+    let world: StoredConversation["world"] | undefined;
+    let userRole: StoredConversation["userRole"] | undefined;
+    if (mode === "roleplay" && (!options.persona || !isValidPersona(options.persona))) {
+      throw new Error("persona is invalid");
     }
-    if (options.director !== undefined && !isValidPersona(options.director)) {
-      throw new Error("director is invalid");
+    if (mode === "group") {
+      cast = Array.isArray(options.cast) ? options.cast.filter(isValidPersona) : [];
+      if (cast.length < 2 || cast.length > 4 || new Set(cast.map((persona) => persona.id)).size !== cast.length) {
+        throw new Error("cast is invalid");
+      }
+      if (options.director !== undefined && !isValidPersona(options.director)) {
+        throw new Error("director is invalid");
+      }
+      director = options.director;
     }
-    director = options.director;
-  }
-  if (options.world !== undefined && !isValidWorldSnapshot(options.world)) {
-    throw new Error("world is invalid");
-  }
-  if (options.userRole !== undefined && !isValidUserRole(options.userRole)) {
-    throw new Error("userRole is invalid");
-  }
-  world = options.world;
-  userRole = options.userRole;
-  const store = await readStore(userId);
-  const now = Date.now();
-  const title =
-    mode === "group"
-      ? cast!.map((persona) => persona.name).join(" × ")
-      : mode === "roleplay"
-        ? options.persona?.name ?? DEFAULT_TITLE
-        : DEFAULT_TITLE;
-  const conversation: StoredConversation = {
-    id: randomUUID(),
-    title,
-    createdAt: now,
-    updatedAt: now,
-    mode,
-    persona: mode === "roleplay" ? options.persona : undefined,
-    cast: mode === "group" ? cast! : undefined,
-    director: mode === "group" ? director : undefined,
-    world,
-    userRole: mode === "group" ? userRole : undefined,
-    messages: [],
-  };
-  store.conversations.push(conversation);
-  await writeStore(userId, store);
-  return summarize(conversation);
+    if (options.world !== undefined && !isValidWorldSnapshot(options.world)) {
+      throw new Error("world is invalid");
+    }
+    if (options.userRole !== undefined && !isValidUserRole(options.userRole)) {
+      throw new Error("userRole is invalid");
+    }
+    world = options.world;
+    userRole = options.userRole;
+    const store = await readStore(userId);
+    const now = Date.now();
+    const title =
+      mode === "group"
+        ? cast!.map((persona) => persona.name).join(" × ")
+        : mode === "roleplay"
+          ? options.persona?.name ?? DEFAULT_TITLE
+          : DEFAULT_TITLE;
+    const conversation: StoredConversation = {
+      id: randomUUID(),
+      title,
+      createdAt: now,
+      updatedAt: now,
+      mode,
+      persona: mode === "roleplay" ? options.persona : undefined,
+      cast: mode === "group" ? cast! : undefined,
+      director: mode === "group" ? director : undefined,
+      world,
+      userRole: mode === "group" ? userRole : undefined,
+      messages: [],
+    };
+    store.conversations.push(conversation);
+    await writeStore(userId, store);
+    return summarize(conversation);
+  });
 }
 
 export async function appendMessage(
@@ -362,19 +366,21 @@ export async function appendMessage(
   message: StoredMessage,
 ): Promise<ConversationSummary> {
   if (!isValidStoredMessage(message)) throw new Error("message is invalid");
-  const store = await readStore(userId);
-  const conversation = store.conversations.find((item) => item.id === conversationId);
-  if (!conversation) throw new Error("conversation not found");
-  conversation.messages.push(message);
-  if (conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION) {
-    conversation.messages.splice(0, conversation.messages.length - MAX_MESSAGES_PER_CONVERSATION);
-  }
-  if (message.role === "user" && conversation.title === DEFAULT_TITLE) {
-    conversation.title = message.content.replace(/\s+/g, " ").trim().slice(0, 30);
-  }
-  conversation.updatedAt = Date.now();
-  await writeStore(userId, store);
-  return summarize(conversation);
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const conversation = store.conversations.find((item) => item.id === conversationId);
+    if (!conversation) throw new Error("conversation not found");
+    conversation.messages.push(message);
+    if (conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION) {
+      conversation.messages.splice(0, conversation.messages.length - MAX_MESSAGES_PER_CONVERSATION);
+    }
+    if (message.role === "user" && conversation.title === DEFAULT_TITLE) {
+      conversation.title = message.content.replace(/\s+/g, " ").trim().slice(0, 30);
+    }
+    conversation.updatedAt = Date.now();
+    await writeStore(userId, store);
+    return summarize(conversation);
+  });
 }
 
 export type ConversationUpdate = {
@@ -394,13 +400,15 @@ export async function updateConversation(
   ) {
     throw new Error("title is invalid");
   }
-  const store = await readStore(userId);
-  const conversation = store.conversations.find((item) => item.id === conversationId);
-  if (!conversation) throw new Error("conversation not found");
-  if (patch.title !== undefined) conversation.title = patch.title.trim();
-  if (patch.pinned !== undefined) conversation.pinned = patch.pinned;
-  if (patch.archived !== undefined) conversation.archived = patch.archived;
-  conversation.updatedAt = Date.now();
-  await writeStore(userId, store);
-  return summarize(conversation);
+  return withFileLock(storePath(userId), async () => {
+    const store = await readStore(userId);
+    const conversation = store.conversations.find((item) => item.id === conversationId);
+    if (!conversation) throw new Error("conversation not found");
+    if (patch.title !== undefined) conversation.title = patch.title.trim();
+    if (patch.pinned !== undefined) conversation.pinned = patch.pinned;
+    if (patch.archived !== undefined) conversation.archived = patch.archived;
+    conversation.updatedAt = Date.now();
+    await writeStore(userId, store);
+    return summarize(conversation);
+  });
 }

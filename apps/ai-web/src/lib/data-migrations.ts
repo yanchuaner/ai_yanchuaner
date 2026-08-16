@@ -3,6 +3,7 @@
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withFileLock } from "@/lib/store";
 
 export type MigrationReport = {
   dryRun: boolean;
@@ -96,26 +97,28 @@ export async function runDataMigrations(options: {
   const backedUp: string[] = [];
   try {
     for (const file of files) {
-      const raw = await readFile(file, "utf8");
-      const before = sha256(raw);
-      const kind = path.basename(path.dirname(file));
-      const parsed: unknown = JSON.parse(raw);
-      const { changed, upgraded } = upgradeStore(kind, parsed);
-      const after = sha256(JSON.stringify(upgraded, null, 2) + "\n");
-      report.checksums.push({ file, before, after });
-      if (!changed) continue;
-      report.changed += 1;
-      if (options.dryRun) continue;
-      if (backupDir) {
-        const relative = path.relative(path.dirname(path.dirname(file)), file);
-        const target = path.join(backupDir, relative);
-        await mkdir(path.dirname(target), { recursive: true });
-        await cp(file, target, { force: true });
-        backedUp.push(file);
-      }
-      const temporary = `${file}.migrate.tmp`;
-      await writeFile(temporary, JSON.stringify(upgraded, null, 2) + "\n", "utf8");
-      await rename(temporary, file);
+      await withFileLock(file, async () => {
+        const raw = await readFile(file, "utf8");
+        const before = sha256(raw);
+        const kind = path.basename(path.dirname(file));
+        const parsed: unknown = JSON.parse(raw);
+        const { changed, upgraded } = upgradeStore(kind, parsed);
+        const after = sha256(JSON.stringify(upgraded, null, 2) + "\n");
+        report.checksums.push({ file, before, after });
+        if (!changed) return;
+        report.changed += 1;
+        if (options.dryRun) return;
+        if (backupDir) {
+          const relative = path.relative(path.dirname(path.dirname(file)), file);
+          const target = path.join(backupDir, relative);
+          await mkdir(path.dirname(target), { recursive: true });
+          await cp(file, target, { force: true });
+          backedUp.push(file);
+        }
+        const temporary = `${file}.migrate.tmp`;
+        await writeFile(temporary, JSON.stringify(upgraded, null, 2) + "\n", "utf8");
+        await rename(temporary, file);
+      });
     }
   } catch (error) {
     if (backupDir && backedUp.length > 0) {

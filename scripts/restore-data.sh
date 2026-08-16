@@ -17,6 +17,10 @@ for file in litellm.sql open-webui-data.tar.gz runtime.env images.txt SHA256SUMS
     exit 1
   fi
 done
+if [[ -f "$backup_dir/ai-web-data.tar.gz" ]]; then
+  grep -q "ai-web-data.tar.gz" "$backup_dir/SHA256SUMS" \
+    || { echo "备份缺少 ai-web-data.tar.gz 校验项" >&2; exit 1; }
+fi
 if [[ ! -f .env ]]; then
   echo "项目根目录缺少 .env，请先安全上传并设置生产地址。" >&2
   exit 1
@@ -50,6 +54,14 @@ echo "正在恢复 Open WebUI 数据卷..."
 docker compose run --rm --no-deps -T --entrypoint sh open-webui \
   -c 'find /app/backend/data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -C /app/backend/data -xzf -' \
   < "$backup_dir/open-webui-data.tar.gz"
+
+if [[ -f "$backup_dir/ai-web-data.tar.gz" ]]; then
+  echo "正在恢复 AI Web 数据卷..."
+  docker compose --profile yancore stop ai-web >/dev/null 2>&1 || true
+  bash scripts/ai-web-data-archive.sh restore "$backup_dir/ai-web-data.tar.gz"
+else
+  echo "警告：备份缺少 ai-web-data.tar.gz，跳过 AI Web 数据恢复。" >&2
+fi
 
 docker compose up -d
 echo "恢复完成，请执行 ./scripts/health-check.sh 并验证管理员登录。"

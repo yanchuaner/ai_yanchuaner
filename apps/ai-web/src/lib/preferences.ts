@@ -1,6 +1,6 @@
 // 用户级偏好设置：目前只存角色收藏，后续置顶会话、界面偏好都放这里。
 
-import { readJsonFile, userStorePath, writeJsonFile } from "@/lib/store";
+import { readJsonFile, userStorePath, withFileLock, writeJsonFile } from "@/lib/store";
 
 export type Preferences = {
   favoritePersonaIds: string[];
@@ -33,7 +33,9 @@ export async function setFavoritePersonas(userId: number, ids: unknown): Promise
   for (const id of ids) {
     if (typeof id !== "string" || id.length === 0 || id.length > 64) throw new Error("favorites are invalid");
   }
-  const preferences: Preferences = { favoritePersonaIds: [...new Set(ids)] };
-  await writeJsonFile(storePath(userId), preferences, MAX_STORE_BYTES);
-  return preferences;
+  return withFileLock(storePath(userId), async () => {
+    const preferences: Preferences = { favoritePersonaIds: [...new Set(ids)] };
+    await writeJsonFile(storePath(userId), preferences, MAX_STORE_BYTES);
+    return preferences;
+  });
 }

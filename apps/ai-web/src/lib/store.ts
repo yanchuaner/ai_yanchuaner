@@ -5,6 +5,26 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+// 进程内按文件串行化的写锁：所有“读整文件-修改-写回”的仓储操作
+// 必须在锁内完成，避免并发请求互相覆盖（丢失更新）。
+const fileLocks = new Map<string, Promise<void>>();
+
+export async function withFileLock<T>(file: string, run: () => Promise<T>): Promise<T> {
+  const previous = fileLocks.get(file) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  fileLocks.set(file, gate);
+  await previous;
+  try {
+    return await run();
+  } finally {
+    release();
+    if (fileLocks.get(file) === gate) fileLocks.delete(file);
+  }
+}
+
 export function userStorePath(kind: string, userId: number): string {
   const dataDir = process.env.AI_WEB_DATA_DIR?.trim() || "/data";
   return path.join(dataDir, kind, `${userId}.json`);
