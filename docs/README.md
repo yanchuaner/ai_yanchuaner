@@ -33,6 +33,10 @@ node scripts/acceptance/run-fault-injection.mjs --scenario stream-abort
 
 每个场景都会创建可撤销测试资源、执行请求、校验 HTTP 状态/错误码/账本，并在结束后自动清理；输出 machine-readable JSON report。
 
+## 观测事件落盘
+
+生产通过 `AI_WEB_OBSERVABILITY_FILE` 指定 JSONL 观测文件（默认 `/data/observability/events.jsonl`）。事件先经 `sanitize` 再落盘，仅保存 schema/event/run/step/capability/trace/request/conversation/duration/outcome/error 等字段；消息正文、token、api key、cookie、grant 不会写入。管理员可用 `GET /api/admin/observability/events?requestId=...` 查询。
+
 生态级身份、网关、工作流、计费和观测语义由工作区根 `docs/architecture.md`、`docs/contracts.md`、`docs/extensions.md`、`docs/billing-and-ledger.md` 与 `docs/observability.md` 定义。本目录只补充 AI 仓库实现。生态治理仓尚未公开前不维护越出本仓根目录的 Markdown 链接；发布后改为固定版本链接。
 
 ## 历史与验收记录
