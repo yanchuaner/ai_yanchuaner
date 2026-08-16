@@ -20,6 +20,12 @@
   --focus: #e8b46a;
   --brand-ink: #201507;
 
+  /* 代码与语法高亮：冷色负责内容穿透，暖色只做骨架（边框/按钮/引用竖条） */
+  --code-keyword: #ffcb6b;
+  --code-string: #80cbc4;
+  --code-comment: #8a7f70;
+  --code-number: #c792ea;
+
   /* 面板与阴影：少描边、少投影，用背景色差与负间距区分层级 */
   --glass-bg: rgba(34, 31, 27, 0.62);
   --glass-strong: rgba(27, 25, 22, 0.84);
