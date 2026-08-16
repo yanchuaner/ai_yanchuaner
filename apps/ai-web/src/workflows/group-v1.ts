@@ -185,12 +185,11 @@ export async function runGroupSpeakerV1(input: GroupSpeakerV1Input): Promise<Res
                 [query],
                 input.fetcher,
               );
-              const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
-              const safeThreshold = Number.isFinite(threshold) ? threshold : 0.3;
+              const threshold = input.adapter.resolveKnowledgeThreshold?.() ?? 0.3;
               const repository = createFileKnowledgeRepository();
               const [personaHits, userHits] = await Promise.all([
-                repository.search(input.userId, input.speaker.id, embedded.vectors[0], 3, safeThreshold),
-                repository.search(input.userId, null, embedded.vectors[0], 2, safeThreshold),
+                repository.search(input.userId, input.speaker.id, embedded.vectors[0], 3, threshold),
+                repository.search(input.userId, null, embedded.vectors[0], 2, threshold),
               ]);
               const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
               if (hits.length > 0) {

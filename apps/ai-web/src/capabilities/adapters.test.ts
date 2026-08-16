@@ -37,3 +37,18 @@ test("replacing provider does not require workflow changes", async () => {
   await run("provider-b-model");
   assert.deepEqual(seen, ["deepseek-chat", "provider-b-model"]);
 });
+
+test("adapter resolves knowledge threshold with env override", () => {
+  const previous = process.env.AI_WEB_KNOWLEDGE_THRESHOLD;
+  try {
+    process.env.AI_WEB_KNOWLEDGE_THRESHOLD = "0.55";
+    assert.equal(createCapabilityAdapter().resolveKnowledgeThreshold?.(), 0.55);
+    process.env.AI_WEB_KNOWLEDGE_THRESHOLD = "not-a-number";
+    assert.equal(createCapabilityAdapter().resolveKnowledgeThreshold?.(), 0.3);
+    delete process.env.AI_WEB_KNOWLEDGE_THRESHOLD;
+    assert.equal(createCapabilityAdapter().resolveKnowledgeThreshold?.(), 0.3);
+  } finally {
+    if (previous === undefined) delete process.env.AI_WEB_KNOWLEDGE_THRESHOLD;
+    else process.env.AI_WEB_KNOWLEDGE_THRESHOLD = previous;
+  }
+});
