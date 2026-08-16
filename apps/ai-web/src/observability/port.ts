@@ -14,7 +14,7 @@ export type ObservabilityExporter = {
 
 export type ObservabilityHub = {
   publish(event: ObservabilityEvent): void;
-  sink(event: WorkflowEvent): void;
+  sink(event: WorkflowEvent & { conversationId?: string }): void;
 };
 
 export function createObservabilityHub(exporters: ObservabilityExporter[]): ObservabilityHub {

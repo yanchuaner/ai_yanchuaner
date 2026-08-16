@@ -6,6 +6,7 @@ import {
   deleteUserKnowledge,
   getPersonaKnowledgeSummary,
   getUserKnowledgeSummary,
+  listDocumentChunks,
   searchPersonaKnowledge,
   searchUserKnowledge,
   type KnowledgeDocumentInput,
@@ -34,5 +35,6 @@ export function createFileKnowledgeRepository(): KnowledgeRepository {
       personaId
         ? searchPersonaKnowledge(userId, personaId, vector, topK, threshold)
         : searchUserKnowledge(userId, vector, topK, threshold),
+    listDocumentChunks: (userId, documentId) => listDocumentChunks(userId, documentId),
   };
 }

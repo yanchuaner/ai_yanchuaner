@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiWebConfig } from "@/lib/config";
 import { forwardImageGeneration } from "@/lib/media";
-import { getDecryptedMediaProvider } from "@/lib/media-settings";
+import { createFileByokSettingsRepository } from "@/lib/byok-settings-file-repository";
 import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
@@ -10,9 +10,11 @@ export async function POST(request: NextRequest) {
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
   const config = getAiWebConfig();
-  const provider = await getDecryptedMediaProvider(
-    guard.session.subject.userId,
+  const provider = await createFileByokSettingsRepository(
     config.sessionSecret,
+    config.allowInsecureInternalHttp,
+  ).getDecryptedMedia(
+    guard.session.subject.userId,
   );
   if (!provider) {
     return NextResponse.json({ error: "请先在“媒体设置”中配置画图服务。" }, { status: 400 });

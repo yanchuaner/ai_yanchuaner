@@ -3,6 +3,7 @@
 import { forwardChatCompletion, type AiChatRequest } from "@/lib/chat";
 import { runWorkflow } from "@/domain/workflow-runtime";
 import type { WorkflowEvent } from "@/domain/workflow-events";
+import type { CapabilityAdapter } from "@/capabilities/adapters";
 
 export class ChatV1Error extends Error {
   constructor(
@@ -18,7 +19,8 @@ export class ChatV1Error extends Error {
 export type ChatV1Input = {
   runId: string;
   conversationId?: string;
-  model: string;
+  capabilityId: string;
+  adapter: CapabilityAdapter;
   messages: AiChatRequest["messages"];
   accessKey: string;
   apiBaseUrl: URL;
@@ -45,10 +47,11 @@ export async function runChatV1(input: ChatV1Input): Promise<Response> {
         id: "chat.text.stream",
         run: async (context) => {
           context.emit("capability", "started", { capabilityId: "text.chat.general" });
+          const model = input.adapter.resolveModel(input.capabilityId);
           const upstream = await forwardChatCompletion(
             input.apiBaseUrl,
             input.accessKey,
-            { model: input.model, messages: input.messages },
+            { model, messages: input.messages },
             input.fetcher,
             context.signal,
             { clientRequestId: input.clientRequestId, traceId: input.traceId },

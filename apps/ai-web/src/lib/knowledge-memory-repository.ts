@@ -125,5 +125,10 @@ export function createMemoryKnowledgeRepository(): KnowledgeRepository {
           score,
         }));
     },
+    async listDocumentChunks(userId, documentId) {
+      return storeFor(userId)
+        .chunks.filter((chunk) => chunk.documentId === documentId)
+        .map((chunk) => ({ id: chunk.id, index: chunk.index, text: chunk.text, tokens: chunk.tokens }));
+    },
   };
 }

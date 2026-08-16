@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ChatV1Error, runChatV1 } from "./chat-v1";
+import { createCapabilityAdapter } from "@/capabilities/adapters";
 
 const base = new URL("https://api.example.test");
+const adapter = createCapabilityAdapter({ model: "deepseek-chat" });
 
 test("runChatV1 returns the upstream SSE response and emits capability events", async () => {
   const events: string[] = [];
@@ -17,7 +19,8 @@ test("runChatV1 returns the upstream SSE response and emits capability events", 
   };
   const response = await runChatV1({
     runId: "run_123456",
-    model: "deepseek-chat",
+    capabilityId: "text.chat.general",
+    adapter,
     messages: [{ role: "user", content: "你好" }],
     accessKey: `sk-yc_${"a".repeat(64)}`,
     apiBaseUrl: base,
@@ -44,7 +47,8 @@ test("runChatV1 maps upstream 401 to SESSION_REVOKED", async () => {
   await assert.rejects(
     runChatV1({
       runId: "run_123456",
-      model: "deepseek-chat",
+      capabilityId: "text.chat.general",
+      adapter,
       messages: [{ role: "user", content: "你好" }],
       accessKey: `sk-yc_${"a".repeat(64)}`,
       apiBaseUrl: base,
@@ -61,7 +65,8 @@ test("runChatV1 maps upstream 502 to GATEWAY_ERROR", async () => {
   await assert.rejects(
     runChatV1({
       runId: "run_123456",
-      model: "deepseek-chat",
+      capabilityId: "text.chat.general",
+      adapter,
       messages: [{ role: "user", content: "你好" }],
       accessKey: `sk-yc_${"a".repeat(64)}`,
       apiBaseUrl: base,
@@ -79,7 +84,8 @@ for (const status of [402, 429] as const) {
     await assert.rejects(
       runChatV1({
         runId: "run_123456",
-        model: "deepseek-chat",
+        capabilityId: "text.chat.general",
+        adapter,
         messages: [{ role: "user", content: "你好" }],
         accessKey: `sk-yc_${"a".repeat(64)}`,
         apiBaseUrl: base,

@@ -26,4 +26,8 @@ export type KnowledgeRepository = {
     topK: number,
     threshold: number,
   ): Promise<KnowledgeHit[]>;
+  listDocumentChunks(
+    userId: number,
+    documentId: string,
+  ): Promise<{ id: string; index: number; text: string; tokens: number }[]>;
 };
