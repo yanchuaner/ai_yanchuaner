@@ -25,6 +25,7 @@ import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal
 import { ChatV1Error, runChatV1 } from "@/workflows/chat-v1";
 import { runRoleplayV1 } from "@/workflows/roleplay-v1";
 import { runGroupScheduleV1, runGroupSpeakerV1 } from "@/workflows/group-v1";
+import { createObservabilityHub } from "@/observability/port";
 
 export type ChatHandlerConfig = {
   publicUrl: URL;
@@ -33,6 +34,7 @@ export type ChatHandlerConfig = {
 };
 
 export async function handleChatCompletion(request: NextRequest, config: ChatHandlerConfig, fetcher: typeof fetch = fetch) {
+  const observability = createObservabilityHub([]);
   if (request.headers.get("origin") !== config.publicUrl.origin) {
     return NextResponse.json({ error: "请求来源无效。" }, { status: 403 });
   }
@@ -86,7 +88,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
         signal: request.signal,
         traceId: ids.traceId,
         clientRequestId: ids.clientRequestId,
-        onEvent: () => {},
+        onEvent: observability.sink,
         fetcher,
       });
     } catch (error) {
@@ -124,7 +126,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
         signal: request.signal,
         traceId: ids.traceId,
         clientRequestId: ids.clientRequestId,
-        onEvent: () => {},
+        onEvent: observability.sink,
         fetcher,
       });
     } catch (error) {
@@ -164,7 +166,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
           signal: request.signal,
           traceId: ids.traceId,
           clientRequestId: ids.clientRequestId,
-          onEvent: () => {},
+          onEvent: observability.sink,
           fetcher,
         });
         const response = NextResponse.json({ speakers: result.speakers });
@@ -209,7 +211,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
           signal: request.signal,
           traceId: ids.traceId,
           clientRequestId: ids.clientRequestId,
-          onEvent: () => {},
+          onEvent: observability.sink,
           fetcher,
         });
       } catch (error) {
