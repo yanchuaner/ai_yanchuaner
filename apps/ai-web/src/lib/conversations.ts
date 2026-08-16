@@ -13,6 +13,7 @@ export type StoredMessage = {
   content: string;
   personaId?: string;
   imageUrl?: string;
+  traceId?: string;
   requestId?: string;
   usage?: StoredUsage;
 };
@@ -103,6 +104,9 @@ export function isValidStoredMessage(message: unknown): message is StoredMessage
     return false;
   }
   if (candidate.imageUrl !== undefined && typeof candidate.imageUrl !== "string") return false;
+  if (candidate.traceId !== undefined && (typeof candidate.traceId !== "string" || candidate.traceId.length > 128)) {
+    return false;
+  }
   if (candidate.requestId !== undefined && (typeof candidate.requestId !== "string" || candidate.requestId.length > 128)) {
     return false;
   }

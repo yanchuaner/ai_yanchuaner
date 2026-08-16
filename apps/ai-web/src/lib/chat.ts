@@ -8,6 +8,18 @@ export type AiChatRequest = {
   messages: AiChatMessage[];
 };
 
+export type ChatTraceIds = {
+  clientRequestId?: string;
+  traceId?: string;
+};
+
+function traceHeaders(ids?: ChatTraceIds): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (ids?.clientRequestId) headers["X-Client-Request-ID"] = ids.clientRequestId;
+  if (ids?.traceId) headers["X-Trace-ID"] = ids.traceId;
+  return headers;
+}
+
 export function parseAiChatRequest(raw: unknown, allowedModels: string[]): AiChatRequest | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const candidate = raw as { model?: unknown; messages?: unknown };
@@ -33,6 +45,7 @@ export async function forwardChatCompletion(
   request: AiChatRequest,
   fetcher: typeof fetch = fetch,
   clientSignal?: AbortSignal,
+  ids?: ChatTraceIds,
 ): Promise<Response> {
   const endpoint = new URL("/v1/chat/completions", apiBaseUrl);
   const upstream = await fetcher(endpoint, {
@@ -44,6 +57,7 @@ export async function forwardChatCompletion(
       Authorization: `Bearer ${accessKey}`,
       "Content-Type": "application/json",
       "X-YanCore-Application": "ai-web",
+      ...traceHeaders(ids),
     },
     body: JSON.stringify({ ...request, stream: true }),
     signal: clientSignal
@@ -62,6 +76,8 @@ export async function forwardChatCompletion(
   });
   const requestId = upstream.headers.get("x-request-id") || upstream.headers.get("x-oneapi-request-id");
   if (requestId) headers.set("X-Request-ID", requestId);
+  if (ids?.traceId) headers.set("X-Trace-ID", ids.traceId);
+  if (ids?.clientRequestId) headers.set("X-Client-Request-ID", ids.clientRequestId);
   return new Response(upstream.body, { status: upstream.status, headers });
 }
 
@@ -71,6 +87,7 @@ export async function forwardChatCompletionJson(
   request: AiChatRequest,
   fetcher: typeof fetch = fetch,
   clientSignal?: AbortSignal,
+  ids?: ChatTraceIds,
 ): Promise<{ status: number; body: unknown }> {
   const endpoint = new URL("/v1/chat/completions", apiBaseUrl);
   const upstream = await fetcher(endpoint, {
@@ -82,6 +99,7 @@ export async function forwardChatCompletionJson(
       Authorization: `Bearer ${accessKey}`,
       "Content-Type": "application/json",
       "X-YanCore-Application": "ai-web",
+      ...traceHeaders(ids),
     },
     body: JSON.stringify({ ...request, stream: false }),
     signal: clientSignal

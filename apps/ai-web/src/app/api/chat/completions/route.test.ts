@@ -27,6 +27,7 @@ function authenticatedRequest(
   body?: unknown,
   origin = "https://ai.example.test",
   models: string[] = ["deepseek-chat"],
+  traceHeaders: Record<string, string> = {},
 ) {
   const expiresAt = Math.floor(Date.now() / 1000) + 600;
   const session: AiSession = {
@@ -42,6 +43,7 @@ function authenticatedRequest(
     },
   };
   const headers = new Headers({ Cookie: `yc_ai_session=${seal(session, sessionSecret)}`, Origin: origin });
+  for (const [key, value] of Object.entries(traceHeaders)) headers.set(key, value);
   if (body !== undefined) headers.set("Content-Type", "application/json");
   return new NextRequest(`https://ai.example.test${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -262,6 +264,7 @@ test("chat route schedules group speakers then streams each member independently
     assert.equal(detailCheck.cast?.length, 2);
 
     const forwardedBodies: string[] = [];
+    const forwardedHeaders: Headers[] = [];
     const fetcher: typeof fetch = async (_input, init) => {
       const url = String(_input);
       if (url.endsWith("/v1/embeddings")) {
@@ -274,6 +277,7 @@ test("chat route schedules group speakers then streams each member independently
       }
       const body = String(init?.body);
       forwardedBodies.push(body);
+      forwardedHeaders.push(new Headers(init?.headers));
       const parsed = JSON.parse(body) as { stream?: boolean; speakerId?: string };
       if (parsed.stream === false) {
         return Response.json({
@@ -304,6 +308,7 @@ test("chat route schedules group speakers then streams each member independently
         },
         "https://ai.example.test",
         ["deepseek-chat", "BAAI/bge-m3"],
+        { "x-trace-id": "trace-g1", "x-client-request-id": "client-g1" },
       ),
       config,
       fetcher,
@@ -328,9 +333,12 @@ test("chat route schedules group speakers then streams each member independently
     assert.match(scheduleBody.messages[0].content, /主持人绝不发言/);
     assert.match(scheduleBody.messages[0].content, /燕川中学/);
     assert.match(scheduleBody.messages[0].content, /转学生/);
+    assert.equal(forwardedHeaders[0].get("x-trace-id"), "trace-g1");
+    assert.equal(forwardedHeaders[0].get("x-client-request-id"), "client-g1");
+    assert.equal(scheduleResponse.headers.get("x-trace-id"), "trace-g1");
 
     const speakerResponses: Response[] = [];
-    for (const speaker of [first, second]) {
+    for (const [index, speaker] of [first, second].entries()) {
       const response = await handleChatCompletion(
         authenticatedRequest(
           "/api/chat/completions",
@@ -343,6 +351,7 @@ test("chat route schedules group speakers then streams each member independently
           },
           "https://ai.example.test",
           ["deepseek-chat", "BAAI/bge-m3"],
+          { "x-trace-id": "trace-g1", "x-client-request-id": `client-g${index + 1}` },
         ),
         config,
         fetcher,
@@ -356,6 +365,11 @@ test("chat route schedules group speakers then streams each member independently
       .slice(1)
       .map((raw) => JSON.parse(raw) as { messages: { role: string; content: string }[] });
     assert.equal(speakerBodies.length, 2);
+    const speakerTraces = forwardedHeaders.slice(1).map((headers) => headers.get("x-trace-id"));
+    assert.deepEqual(speakerTraces, ["trace-g1", "trace-g1"]);
+    const speakerClients = forwardedHeaders.slice(1).map((headers) => headers.get("x-client-request-id"));
+    assert.ok(speakerClients.every((value) => typeof value === "string" && value.length > 0));
+    assert.equal(new Set(speakerClients).size, 2, "每个角色请求应有独立 client_request_id");
     const firstBody = speakerBodies.find((item) => item.messages[0].content.startsWith("你是「星河旅者」"));
     const secondBody = speakerBodies.find((item) => item.messages[0].content.startsWith("你是「燕中学伴」"));
     assert.ok(firstBody && secondBody);

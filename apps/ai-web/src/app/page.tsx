@@ -25,6 +25,7 @@ import { UserKnowledgeDrawer } from "@/components/user-knowledge";
 import { WorldLibrary } from "@/components/world-library";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
 import { containsOtherSpeakerSpeech, createSpeakerPrefixStripper } from "@/lib/group-speech";
+import { createClientRequestId, createTraceId } from "@/lib/request-ids";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
   AppView,
@@ -131,6 +132,7 @@ export default function HomePage() {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const imageFileRef = useRef<HTMLInputElement | null>(null);
+  const lastFailedRef = useRef<{ content: string; clientRequestId: string } | null>(null);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettingsView | null>(null);
   const [voiceForm, setVoiceForm] = useState({
     asrBaseUrl: "",
@@ -842,10 +844,15 @@ export default function HomePage() {
 
   async function runGroupOpening(targetConversationId: string, castNames: string[]) {
     const openingMessages = [{ role: "user" as const, content: "开始群聊" }];
+    const traceId = createTraceId();
     try {
       const scheduleResponse = await fetch("/api/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Request-ID": createClientRequestId(),
+          "X-Trace-ID": traceId,
+        },
         body: JSON.stringify({
           model,
           messages: openingMessages,
@@ -882,7 +889,11 @@ export default function HomePage() {
         speakers.map(async (speaker) => {
           const response = await fetch("/api/chat/completions", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-Client-Request-ID": createClientRequestId(),
+              "X-Trace-ID": traceId,
+            },
             body: JSON.stringify({
               model,
               messages: openingMessages,
@@ -944,6 +955,7 @@ export default function HomePage() {
               role: "assistant",
               content,
               personaId: speaker.id,
+              traceId,
             }),
           }).catch(() => {});
         }),
@@ -1229,6 +1241,10 @@ export default function HomePage() {
         return;
       }
     }
+    const retry = !pendingImage && lastFailedRef.current?.content === content;
+    const clientRequestId = retry && lastFailedRef.current ? lastFailedRef.current.clientRequestId : createClientRequestId();
+    const traceId = createTraceId();
+    if (retry) lastFailedRef.current = null;
     const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
     const activeMode = activeConversation?.mode ?? "chat";
     const userMessage = newMessage("user", finalContent);
@@ -1262,7 +1278,7 @@ export default function HomePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: userMessage.id, role: "user", content: userMessage.content }),
         });
-        await runGroupTurn(targetConversationId, requestMessages, controller);
+        await runGroupTurn(targetConversationId, requestMessages, controller, traceId);
       } catch (reason) {
         const message = reason instanceof Error ? reason.message : "模型请求失败。";
         if (message.includes("登录会话已失效")) {
@@ -1272,6 +1288,7 @@ export default function HomePage() {
         if (!controller.signal.aborted) {
           setError(message);
           setPrompt(content);
+          lastFailedRef.current = { content, clientRequestId };
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
@@ -1294,7 +1311,11 @@ export default function HomePage() {
       });
       const response = await fetch("/api/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Request-ID": clientRequestId,
+          "X-Trace-ID": traceId,
+        },
         body: JSON.stringify({
           model,
           messages: requestMessages,
@@ -1370,6 +1391,7 @@ export default function HomePage() {
           id: assistantMessage.id,
           role: "assistant",
           content: assistantContent,
+          traceId,
           requestId,
           usage: lastUsage
             ? {
@@ -1394,6 +1416,7 @@ export default function HomePage() {
       if (!controller.signal.aborted) {
         setError(message);
         setPrompt(content);
+        lastFailedRef.current = { content, clientRequestId };
       }
       setMessages((current) =>
         current.filter((message) => message.id !== assistantMessage.id || message.content.length > 0),
@@ -1408,10 +1431,15 @@ export default function HomePage() {
     targetConversationId: string,
     requestMessages: { role: "system" | "user" | "assistant"; content: string }[],
     controller: AbortController,
+    traceId: string,
   ) {
     const scheduleResponse = await fetch("/api/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Client-Request-ID": createClientRequestId(),
+        "X-Trace-ID": traceId,
+      },
       body: JSON.stringify({
         model,
         messages: requestMessages,
@@ -1446,7 +1474,11 @@ export default function HomePage() {
       speakers.map(async (speaker) => {
         const response = await fetch("/api/chat/completions", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Client-Request-ID": createClientRequestId(),
+            "X-Trace-ID": traceId,
+          },
           body: JSON.stringify({
             model,
             messages: requestMessages,
@@ -1535,6 +1567,7 @@ export default function HomePage() {
             role: "assistant",
             content,
             personaId: speaker.id,
+            traceId,
             requestId,
             usage: usage
               ? {

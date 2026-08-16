@@ -20,6 +20,7 @@ import {
 } from "@/lib/knowledge-library";
 import { getPersonaMemory } from "@/lib/memory-library";
 import type { Persona } from "@/lib/personas";
+import { resolveRequestIds, type RequestIdBundle } from "@/lib/request-ids";
 import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
 
 export type ChatHandlerConfig = {
@@ -54,6 +55,10 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   }
   const parsed = parseAiChatRequest(body, session.credential.models);
   if (!parsed) return NextResponse.json({ error: "模型或消息格式无效。" }, { status: 400 });
+  const ids = resolveRequestIds(
+    request.headers.get("x-client-request-id"),
+    request.headers.get("x-trace-id"),
+  );
   let knowledgeHits = 0;
   const candidate = body as Record<string, unknown> | null;
   let conversationDetail: ConversationDetail | null = null;
@@ -67,7 +72,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   if (conversationDetail?.mode === "group" && conversationDetail.cast?.length) {
     const opening = candidate?.opening === true;
     if (candidate?.groupSchedule === true) {
-      return handleGroupSchedule(request, config, session, parsed, conversationDetail, fetcher, opening);
+      return handleGroupSchedule(request, config, session, parsed, conversationDetail, fetcher, opening, ids);
     }
     if (typeof candidate?.speakerId === "string") {
       return handleGroupSpeaker(
@@ -79,6 +84,7 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
         candidate.speakerId,
         fetcher,
         opening,
+        ids,
       );
     }
   } else {
@@ -135,7 +141,14 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
     }
   }
   try {
-    const upstream = await forwardChatCompletion(config.yanCoreApiBaseUrl, session.credential.accessKey, parsed, fetcher, request.signal);
+    const upstream = await forwardChatCompletion(
+      config.yanCoreApiBaseUrl,
+      session.credential.accessKey,
+      parsed,
+      fetcher,
+      request.signal,
+      ids,
+    );
     if (upstream.status === 401 || upstream.status === 403) {
       await upstream.body?.cancel();
       const revoked = NextResponse.json(
@@ -164,6 +177,7 @@ async function handleGroupSchedule(
   detail: ConversationDetail,
   fetcher: typeof fetch,
   opening: boolean,
+  ids: RequestIdBundle,
 ): Promise<Response> {
   const cast = detail.cast ?? [];
   const history = opening ? detail.messages : ensureLatestUser(detail.messages, parsed);
@@ -183,6 +197,7 @@ async function handleGroupSchedule(
     { model: parsed.model, messages: schedulerMessages },
     fetcher,
     request.signal,
+    ids,
   );
   if (schedulerResponse.status === 401 || schedulerResponse.status === 403) {
     const revoked = NextResponse.json(
@@ -206,9 +221,12 @@ async function handleGroupSchedule(
     ? parseSpeakerNames(schedulerBody.choices?.[0]?.message?.content, candidates)
     : [];
   const selectedSpeakers = speakers.length > 0 ? speakers.slice(0, 2) : pickFallbackSpeakers(candidates);
-  return NextResponse.json({
+  const response = NextResponse.json({
     speakers: selectedSpeakers.map((persona) => ({ id: persona.id, name: persona.name })),
   });
+  response.headers.set("X-Trace-ID", ids.traceId);
+  response.headers.set("X-Client-Request-ID", ids.clientRequestId);
+  return response;
 }
 
 async function handleGroupSpeaker(
@@ -220,6 +238,7 @@ async function handleGroupSpeaker(
   speakerId: string,
   fetcher: typeof fetch,
   opening: boolean,
+  ids: RequestIdBundle,
 ): Promise<Response> {
   const cast = detail.cast ?? [];
   const speaker = cast.find((persona) => persona.id === speakerId);
@@ -277,6 +296,7 @@ async function handleGroupSpeaker(
     },
     fetcher,
     request.signal,
+    ids,
   );
   if (upstream.status === 401 || upstream.status === 403) {
     await upstream.body?.cancel();
@@ -290,6 +310,8 @@ async function handleGroupSpeaker(
   const headers = new Headers(upstream.headers);
   headers.set("Cache-Control", "no-store");
   headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Trace-ID", ids.traceId);
+  headers.set("X-Client-Request-ID", ids.clientRequestId);
   return new Response(upstream.body, { status: upstream.status, headers });
 }
 
