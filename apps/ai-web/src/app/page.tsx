@@ -12,7 +12,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChatStage } from "@/components/chat-stage";
 import { Drawer } from "@/components/drawer";
 import { GuideDrawer } from "@/components/guide-drawer";
@@ -26,21 +26,7 @@ import { WorldLibrary } from "@/components/world-library";
 import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
 import { containsOtherSpeakerSpeech, createSpeakerPrefixStripper } from "@/lib/group-speech";
 import { createClientRequestId, createTraceId } from "@/lib/request-ids";
-import {
-  AccountActionError,
-  createAccountKey,
-  grantQuota,
-  listAccountKeys,
-  loadAccountBalance,
-  loadAccountLedger,
-  loadAccountSession,
-  logout as logoutAccount,
-  revokeAccountKey,
-  type AccountApiKey,
-  type AccountLedgerEntry,
-  type AccountQuotaInput,
-  type AccountSession,
-} from "@/lib/account";
+import { AccountActionError, loadAccountSession } from "@/lib/account";
 import {
   appendConversationMessage,
   clearConversationMemory,
@@ -62,12 +48,12 @@ import {
 } from "@/lib/chat-actions";
 import { ActionError } from "@/lib/action-http";
 import * as personaActions from "@/lib/persona-actions";
-import * as worldActions from "@/lib/world-actions";
 import * as knowledgeActions from "@/lib/knowledge-actions";
 import { getFavoritePersonaIds, setFavoritePersonaIds } from "@/lib/preferences-actions";
-import * as mediaActions from "@/lib/media-actions";
-import * as voiceActions from "@/lib/voice-actions";
-import type { VoiceSettingsInput, VoiceSettingsView } from "@/lib/voice-actions";
+import { useAccountState, type SessionState } from "@/hooks/use-account-state";
+import { useMediaState } from "@/hooks/use-media-state";
+import { useVoiceState } from "@/hooks/use-voice-state";
+import { useWorldState } from "@/hooks/use-world-state";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
   AppView,
@@ -76,18 +62,6 @@ import type {
   KnowledgeDraft,
   PersonaKnowledge,
 } from "@/lib/types";
-
-type SessionState =
-  | { status: "loading" }
-  | { status: "anonymous"; message?: string }
-  | {
-      status: "authenticated";
-      identity: AccountSession["identity"];
-      subject: AccountSession["subject"];
-      models: AccountSession["models"];
-      sessionQuotaUnits: AccountSession["sessionQuotaUnits"];
-      expiresAt: AccountSession["expiresAt"];
-    };
 
 type DetailState =
   | { open: false; persona?: undefined; mode?: never }
@@ -98,13 +72,13 @@ function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
 }
 
 export default function HomePage() {
-  const [session, setSession] = useState<SessionState>({ status: "loading" });
+  const abortRef = useRef<AbortController | null>(null);
+  const lastFailedRef = useRef<{ content: string; clientRequestId: string } | null>(null);
   const [model, setModel] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [balanceUnits, setBalanceUnits] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [view, setView] = useState<AppView>("home");
@@ -122,51 +96,125 @@ export default function HomePage() {
   const [userKnowledgeBusy, setUserKnowledgeBusy] = useState(false);
   const [activeMemory, setActiveMemory] = useState<string | null>(null);
   const [memoryState, setMemoryState] = useState<"idle" | "generating" | "error">("idle");
-  const [ledgerEntries, setLedgerEntries] = useState<AccountLedgerEntry[]>([]);
-  const [ledgerTotal, setLedgerTotal] = useState(0);
-  const [ledgerError, setLedgerError] = useState("");
-  const [quotaForm, setQuotaForm] = useState({ userId: "", action: "grant", amount: "", reason: "", reference: "" });
-  const [quotaResult, setQuotaResult] = useState("");
-  const [quotaError, setQuotaError] = useState("");
-  const [keys, setKeys] = useState<AccountApiKey[]>([]);
-  const [keyForm, setKeyForm] = useState({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
-  const [createdKey, setCreatedKey] = useState("");
-  const [keysError, setKeysError] = useState("");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota" | "voice" | "media">("ledger");
-  const [worlds, setWorlds] = useState<World[]>([]);
   const [activeWorldTitle, setActiveWorldTitle] = useState<string | null>(null);
   const [activeUserRoleName, setActiveUserRoleName] = useState<string | null>(null);
-  const [mediaSettings, setMediaSettings] = useState<{ baseUrl: string; visionModel: string; imageModel: string } | null>(null);
-  const [mediaForm, setMediaForm] = useState({ baseUrl: "", visionModel: "", imageModel: "", apiKey: "" });
-  const [mediaBusy, setMediaBusy] = useState(false);
-  const [mediaResult, setMediaResult] = useState("");
-  const [mediaError, setMediaError] = useState("");
-  const [pendingImage, setPendingImage] = useState<string | null>(null);
-  const [imageBusy, setImageBusy] = useState(false);
-  const imageFileRef = useRef<HTMLInputElement | null>(null);
-  const lastFailedRef = useRef<{ content: string; clientRequestId: string } | null>(null);
-  const [voiceSettings, setVoiceSettings] = useState<VoiceSettingsView | null>(null);
-  const [voiceForm, setVoiceForm] = useState({
-    asrBaseUrl: "",
-    asrModel: "",
-    asrKey: "",
-    ttsBaseUrl: "",
-    ttsModel: "",
-    ttsVoice: "",
-    ttsKey: "",
-  });
-  const [voiceBusy, setVoiceBusy] = useState(false);
-  const [voiceResult, setVoiceResult] = useState("");
-  const [voiceError, setVoiceError] = useState("");
-  const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [setupWorldId, setSetupWorldId] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const [latestMessageIds, setLatestMessageIds] = useState<Set<string>>(new Set());
+
+  const account = useAccountState({
+    abortRef,
+    onSessionExpired: () => {
+      setConversationId(null);
+      setMessages([]);
+      setLatestMessageIds(new Set());
+      setActiveCast([]);
+      setPending(false);
+    },
+  });
+  const {
+    session,
+    setSession,
+    handleSessionExpired,
+    loadBalance,
+    loadLedger,
+    loadKeys,
+    submitKey,
+    deleteKey,
+    submitQuota,
+    logout: logoutAccountAction,
+    balanceUnits,
+    ledgerEntries,
+    ledgerTotal,
+    ledgerError,
+    quotaForm,
+    setQuotaForm,
+    quotaResult,
+    quotaError,
+    keys,
+    keyForm,
+    setKeyForm,
+    createdKey,
+    keysError,
+  } = account;
+
+  const world = useWorldState({ onUnauthenticated: handleSessionExpired });
+  const { worlds, loadWorlds, saveWorld, updateWorld, removeWorld: removeWorldAction } = world;
+
+  const media = useMediaState({ onUnauthenticated: handleSessionExpired });
+  const {
+    mediaSettings,
+    mediaForm,
+    setMediaForm,
+    mediaBusy,
+    mediaResult,
+    mediaError,
+    pendingImage,
+    setPendingImage,
+    imageBusy,
+    imageFileRef,
+    loadMediaSettings,
+    saveMediaSettings,
+    clearMedia,
+    pickImageFile,
+    handleImageFile: handleImageFileAction,
+    generateImage: generateImageAction,
+    describeImage,
+  } = media;
+
+  const voice = useVoiceState({ onUnauthenticated: handleSessionExpired });
+  const {
+    voiceSettings,
+    voiceForm,
+    setVoiceForm,
+    voiceBusy,
+    voiceResult,
+    voiceError,
+    speakingId,
+    loadVoiceSettings,
+    saveVoiceSettings,
+    clearVoiceSection,
+    transcribeVoice,
+    speakVoice,
+  } = voice;
+
+  function handleImageFile(file: File) {
+    const message = handleImageFileAction(file);
+    if (message) setError(message);
+  }
+
+  async function generateImage(prompt: string) {
+    const content = prompt.trim();
+    if (!content || imageBusy || pending) return;
+    setError("");
+    try {
+      const image = await generateImageAction(content);
+      const message = {
+        id: `image-${crypto.randomUUID()}`,
+        role: "assistant" as const,
+        content,
+        imageUrl: image,
+      };
+      setMessages((current) => [...current, message]);
+      markLatest(message.id);
+      setPrompt("");
+      if (conversationId) {
+        await appendConversationMessage(conversationId, message).catch(() => {});
+      }
+    } catch (reason) {
+      const message = handleConversationError(reason);
+      setError(message ?? "图片生成失败。");
+    }
+  }
+
+  async function removeWorld(worldId: string) {
+    if (!window.confirm("删除这个世界观？已开演的故事不受影响。")) return;
+    await removeWorldAction(worldId);
+  }
 
   function markLatest(...ids: string[]) {
     setLatestMessageIds((current) => {
@@ -174,27 +222,6 @@ export default function HomePage() {
       for (const id of ids) next.add(id);
       return next;
     });
-  }
-
-  function handleSessionExpired() {
-    abortRef.current?.abort();
-    setSession({ status: "anonymous" });
-    setConversationId(null);
-    setMessages([]);
-    setLatestMessageIds(new Set());
-    setActiveCast([]);
-    setPending(false);
-  }
-
-  function handleAccountError(error: unknown): string | null {
-    if (error instanceof AccountActionError) {
-      if (error.code === "unauthenticated") {
-        handleSessionExpired();
-        return null;
-      }
-      return error.message;
-    }
-    return error instanceof Error ? error.message : "操作失败。";
   }
 
   function isSessionError(error: unknown): boolean {
@@ -212,16 +239,6 @@ export default function HomePage() {
       return null;
     }
     return error instanceof Error ? error.message : "操作失败。";
-  }
-
-  async function loadBalance() {
-    try {
-      const account = await loadAccountBalance();
-      setBalanceUnits(account.balanceUnits);
-    } catch (error) {
-      handleAccountError(error);
-      setBalanceUnits(null);
-    }
   }
 
   async function ensureConversation(): Promise<string | null> {
@@ -267,273 +284,13 @@ export default function HomePage() {
     }
   }
 
-  async function loadLedger() {
-    try {
-      const page = await loadAccountLedger();
-      setLedgerEntries(page.entries);
-      setLedgerTotal(page.total);
-      setLedgerError("");
-    } catch (error) {
-      setLedgerEntries([]);
-      setLedgerTotal(0);
-      const message = handleAccountError(error);
-      if (message) setLedgerError(message);
-    }
-  }
-
-  async function loadKeys() {
-    try {
-      setKeys(await listAccountKeys());
-      setKeysError("");
-    } catch (error) {
-      setKeys([]);
-      const message = handleAccountError(error);
-      if (message) setKeysError(message);
-    }
-  }
-
   async function openTools(tab: "ledger" | "keys" | "quota" | "voice" | "media") {
     setToolsTab(tab);
     setToolsOpen(true);
-    if (tab === "ledger") {
-      setLedgerError("");
-      await loadLedger();
-    }
+    if (tab === "ledger") await loadLedger();
     if (tab === "keys") await loadKeys();
     if (tab === "voice") await loadVoiceSettings();
     if (tab === "media") await loadMediaSettings();
-  }
-
-  async function loadVoiceSettings() {
-    try {
-      const settings = await voiceActions.getVoiceSettings();
-      setVoiceSettings(settings);
-      setVoiceForm({
-        asrBaseUrl: settings.asr?.baseUrl ?? "https://api.siliconflow.cn/v1",
-        asrModel: settings.asr?.model ?? "FunAudioLLM/SenseVoiceSmall",
-        asrKey: "",
-        ttsBaseUrl: settings.tts?.baseUrl ?? "https://api.siliconflow.cn/v1",
-        ttsModel: settings.tts?.model ?? "FunAudioLLM/CosyVoice2-0.5B",
-        ttsVoice: settings.tts?.voice ?? "FunAudioLLM/CosyVoice2-0.5B:alex",
-        ttsKey: "",
-      });
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
-  async function saveVoiceSettings() {
-    setVoiceBusy(true);
-    setVoiceError("");
-    setVoiceResult("");
-    const payload: VoiceSettingsInput = {};
-    if (voiceForm.asrBaseUrl.trim() || voiceForm.asrModel.trim() || voiceForm.asrKey) {
-      payload.asr = {
-        baseUrl: voiceForm.asrBaseUrl.trim(),
-        model: voiceForm.asrModel.trim(),
-        apiKey: voiceForm.asrKey || undefined,
-      };
-    }
-    if (voiceForm.ttsBaseUrl.trim() || voiceForm.ttsModel.trim() || voiceForm.ttsVoice.trim() || voiceForm.ttsKey) {
-      payload.tts = {
-        baseUrl: voiceForm.ttsBaseUrl.trim(),
-        model: voiceForm.ttsModel.trim(),
-        voice: voiceForm.ttsVoice.trim() || undefined,
-        apiKey: voiceForm.ttsKey || undefined,
-      };
-    }
-    try {
-      const settings = await voiceActions.updateVoiceSettings(payload);
-      setVoiceSettings(settings);
-      setVoiceResult("语音设置已保存。");
-      setVoiceForm((current) => ({ ...current, asrKey: "", ttsKey: "" }));
-    } catch (reason) {
-      const message = handleConversationError(reason);
-      setVoiceError(message ?? "保存语音设置失败。");
-    } finally {
-      setVoiceBusy(false);
-    }
-  }
-
-  async function clearVoiceSection(section: "asr" | "tts") {
-    setVoiceBusy(true);
-    setVoiceError("");
-    setVoiceResult("");
-    try {
-      const settings = await voiceActions.clearVoiceSection(section);
-      setVoiceSettings(settings);
-      setVoiceResult("语音设置已清除。");
-      setVoiceForm((current) => ({
-        ...current,
-        ...(section === "asr"
-          ? { asrBaseUrl: "", asrModel: "", asrKey: "" }
-          : { ttsBaseUrl: "", ttsModel: "", ttsVoice: "", ttsKey: "" }),
-      }));
-    } catch (reason) {
-      const message = handleConversationError(reason);
-      setVoiceError(message ?? "清除失败。");
-    } finally {
-      setVoiceBusy(false);
-    }
-  }
-
-  async function loadWorlds() {
-    try {
-      setWorlds(await worldActions.listWorlds());
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
-  async function saveWorld(input: WorldInput) {
-    try {
-      await worldActions.createWorld(input);
-      await loadWorlds();
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) throw new Error(message);
-    }
-  }
-
-  async function updateWorld(worldId: string, input: WorldInput) {
-    try {
-      await worldActions.updateWorld(worldId, input);
-      await loadWorlds();
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) throw new Error(message);
-    }
-  }
-
-  async function removeWorld(worldId: string) {
-    if (!window.confirm("删除这个世界观？已开演的故事不受影响。")) return;
-    try {
-      await worldActions.deleteWorld(worldId);
-      await loadWorlds();
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) throw new Error(message);
-    }
-  }
-
-  async function loadMediaSettings() {
-    try {
-      const settings = await mediaActions.getMediaSettings();
-      setMediaSettings(settings);
-      setMediaForm({
-        baseUrl: settings?.baseUrl ?? "https://api.siliconflow.cn/v1",
-        visionModel: settings?.visionModel ?? "Qwen/Qwen2.5-VL-72B-Instruct",
-        imageModel: settings?.imageModel ?? "black-forest-labs/FLUX.1-schnell",
-        apiKey: "",
-      });
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
-  async function saveMediaSettings() {
-    setMediaBusy(true);
-    setMediaError("");
-    setMediaResult("");
-    try {
-      const settings = await mediaActions.updateMediaSettings({
-        baseUrl: mediaForm.baseUrl.trim(),
-        visionModel: mediaForm.visionModel.trim(),
-        imageModel: mediaForm.imageModel.trim(),
-        apiKey: mediaForm.apiKey || undefined,
-      });
-      setMediaSettings(settings);
-      setMediaResult("媒体设置已保存。");
-      setMediaForm((current) => ({ ...current, apiKey: "" }));
-    } catch (reason) {
-      const message = handleConversationError(reason);
-      setMediaError(message ?? "保存媒体设置失败。");
-    } finally {
-      setMediaBusy(false);
-    }
-  }
-
-  async function clearMedia() {
-    try {
-      await mediaActions.clearMediaSettings();
-      setMediaSettings(null);
-      setMediaResult("媒体设置已清除。");
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) setMediaError(message);
-    }
-  }
-
-  function pickImageFile() {
-    imageFileRef.current?.click();
-  }
-
-  function handleImageFile(file: File) {
-    if (!file.type.startsWith("image/")) {
-      setError("请选择图片文件。");
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      setError("图片不能超过 8 MB。");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setPendingImage(reader.result);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  async function generateImage(prompt: string) {
-    const content = prompt.trim();
-    if (!content || imageBusy || pending) return;
-    setImageBusy(true);
-    setError("");
-    try {
-      const image = await mediaActions.generateImage(content);
-      const message = {
-        id: `image-${crypto.randomUUID()}`,
-        role: "assistant" as const,
-        content,
-        imageUrl: image,
-      };
-      setMessages((current) => [...current, message]);
-      markLatest(message.id);
-      setPrompt("");
-      if (conversationId) {
-        await appendConversationMessage(conversationId, message).catch(() => {});
-      }
-    } catch (reason) {
-      const message = handleConversationError(reason);
-      setError(message ?? "图片生成失败。");
-    } finally {
-      setImageBusy(false);
-    }
-  }
-
-  async function transcribeVoice(file: File): Promise<string> {
-    return voiceActions.transcribeVoice(file);
-  }
-
-  async function speakVoice(messageId: string, text: string) {
-    setSpeakingId(messageId);
-    try {
-      // 在用户手势内创建并唤醒 AudioContext，避免浏览器自动播放策略拦截；
-      // 后续用 decodeAudioData 播放 MP3，失败会明确报错而不是静默无音。
-      const audioContext = audioContextRef.current ?? new AudioContext();
-      audioContextRef.current = audioContext;
-      if (audioContext.state === "suspended") await audioContext.resume();
-      const { audio } = await voiceActions.synthesizeSpeech(text);
-      const decoded = await audioContext.decodeAudioData(audio);
-      const source = audioContext.createBufferSource();
-      source.buffer = decoded;
-      source.connect(audioContext.destination);
-      source.onended = () => setSpeakingId(null);
-      source.start();
-    } catch (reason) {
-      setSpeakingId(null);
-      throw reason instanceof Error ? reason : new Error("语音朗读失败。");
-    }
   }
 
   async function toggleFavorite(personaId: string) {
@@ -1039,16 +796,7 @@ export default function HomePage() {
   }, []);
 
   async function logout() {
-    abortRef.current?.abort();
-    try {
-      await logoutAccount();
-    } catch {
-      // 退出请求失败时也重置本地会话，避免页面停留在已退出状态。
-    }
-    setSession({ status: "anonymous" });
-    setMessages([]);
-    setLatestMessageIds(new Set());
-    setConversationId(null);
+    await logoutAccountAction();
     setView("home");
   }
 
@@ -1064,7 +812,7 @@ export default function HomePage() {
     let finalContent = content;
     if (pendingImage) {
       try {
-        const visionText = await mediaActions.describeImage(
+        const visionText = await describeImage(
           pendingImage,
           "结合当前对话，用 100 字以内简要描述这张图片的内容。",
         );
@@ -2044,55 +1792,4 @@ export default function HomePage() {
     </main>
   );
 
-  async function submitKey(event: FormEvent) {
-    event.preventDefault();
-    setKeysError("");
-    setCreatedKey("");
-    try {
-      const result = await createAccountKey({
-        name: keyForm.name,
-        models: keyForm.models,
-        remainQuota: Number(keyForm.remainQuota),
-        expiryDays: Number(keyForm.expiryDays),
-      });
-      setCreatedKey(result.key);
-      setKeyForm({ name: "", models: ["deepseek-v4-flash"], remainQuota: "100000", expiryDays: "30" });
-      await loadKeys();
-    } catch (error) {
-      const message = handleAccountError(error);
-      if (message) setKeysError(message);
-    }
-  }
-
-  async function deleteKey(id: number) {
-    if (!window.confirm("删除该 Key？使用它的请求将立即失效。")) return;
-    try {
-      await revokeAccountKey(id);
-      await loadKeys();
-    } catch (error) {
-      const message = handleAccountError(error);
-      if (message) setKeysError(message);
-    }
-  }
-
-  async function submitQuota(event: FormEvent) {
-    event.preventDefault();
-    setQuotaResult("");
-    setQuotaError("");
-    try {
-      const result = await grantQuota({
-        userId: Number(quotaForm.userId),
-        action: quotaForm.action as AccountQuotaInput["action"],
-        amount: Number(quotaForm.amount),
-        reason: quotaForm.reason,
-        reference: quotaForm.reference,
-      });
-      setQuotaResult(`发放成功，最新余额 ${result.balanceAfter}`);
-      setQuotaForm((current) => ({ ...current, userId: "", amount: "", reference: "" }));
-      void loadBalance();
-    } catch (error) {
-      const message = handleAccountError(error);
-      if (message) setQuotaError(message);
-    }
-  }
 }
