@@ -23,83 +23,33 @@ import { PersonaSetup } from "@/components/persona-setup";
 import { ConversationSidebar } from "@/components/sidebar";
 import { UserKnowledgeDrawer } from "@/components/user-knowledge";
 import { WorldLibrary } from "@/components/world-library";
-import { personaSystemPrompt, PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
-import { containsOtherSpeakerSpeech, createSpeakerPrefixStripper } from "@/lib/group-speech";
-import { createClientRequestId, createTraceId } from "@/lib/request-ids";
+import { PRESET_PERSONAS, type Persona, type PersonaInput } from "@/lib/personas";
 import { AccountActionError, loadAccountSession } from "@/lib/account";
-import {
-  appendConversationMessage,
-  clearConversationMemory,
-  ConversationActionError,
-  createConversation,
-  deleteConversation,
-  exportConversation,
-  getConversationDetail,
-  getConversationMemory,
-  listConversations,
-  refreshConversationMemory,
-  updateConversation,
-} from "@/lib/conversation-actions";
-import {
-  ChatActionError,
-  requestGroupSchedule,
-  streamChatCompletion,
-  type ChatRequestMessage,
-} from "@/lib/chat-actions";
+import { appendConversationMessage, ConversationActionError } from "@/lib/conversation-actions";
+import { ChatActionError } from "@/lib/chat-actions";
 import { ActionError } from "@/lib/action-http";
-import { useAccountState, type SessionState } from "@/hooks/use-account-state";
+import { useAccountState } from "@/hooks/use-account-state";
+import { useConversationState } from "@/hooks/use-conversation-state";
 import { useMediaState } from "@/hooks/use-media-state";
 import { usePersonaState, type DetailState } from "@/hooks/use-persona-state";
 import { useVoiceState } from "@/hooks/use-voice-state";
 import { useWorldState } from "@/hooks/use-world-state";
-import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
-import type {
-  AppView,
-  ChatMessage,
-  ConversationSummary,
-  KnowledgeDraft,
-} from "@/lib/types";
-
-function newMessage(role: ChatMessage["role"], content: string): ChatMessage {
-  return { id: crypto.randomUUID(), role, content };
-}
+import type { WorldSnapshot } from "@/lib/worlds";
+import type { AppView } from "@/lib/types";
 
 export default function HomePage() {
   const abortRef = useRef<AbortController | null>(null);
-  const lastFailedRef = useRef<{ content: string; clientRequestId: string } | null>(null);
-  const [model, setModel] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [prompt, setPrompt] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [view, setView] = useState<AppView>("home");
-  const [activePersona, setActivePersona] = useState<Persona | undefined>();
-  const [activeCast, setActiveCast] = useState<Persona[]>([]);
-  const [knowledgeEnabled, setKnowledgeEnabled] = useState(true);
-  const [lastKnowledgeHits, setLastKnowledgeHits] = useState<number | null>(null);
-  const [activeMemory, setActiveMemory] = useState<string | null>(null);
-  const [memoryState, setMemoryState] = useState<"idle" | "generating" | "error">("idle");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [toolsTab, setToolsTab] = useState<"ledger" | "keys" | "quota" | "voice" | "media">("ledger");
-  const [activeWorldTitle, setActiveWorldTitle] = useState<string | null>(null);
-  const [activeUserRoleName, setActiveUserRoleName] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [setupWorldId, setSetupWorldId] = useState<string | null>(null);
-  const [latestMessageIds, setLatestMessageIds] = useState<Set<string>>(new Set());
 
   const account = useAccountState({
     abortRef,
-    onSessionExpired: () => {
-      setConversationId(null);
-      setMessages([]);
-      setLatestMessageIds(new Set());
-      setActiveCast([]);
-      setPending(false);
-    },
+    onSessionExpired: () => {},
   });
   const {
     session,
@@ -200,6 +150,64 @@ export default function HomePage() {
     deleteLibraryPersona,
   } = persona;
 
+  const conversation = useConversationState({
+    abortRef,
+    session,
+    setView,
+    setSetupOpen,
+    setSetupWorldId,
+    setDetail,
+    personas,
+    createLibraryPersona,
+    uploadInitialKnowledge,
+    loadBalance,
+    handleSessionExpired,
+    media: { pendingImage, setPendingImage, describeImage },
+  });
+  const {
+    model,
+    setModel,
+    messages,
+    setMessages,
+    prompt,
+    setPrompt,
+    pending,
+    setPending,
+    error,
+    setError,
+    conversationId,
+    conversations,
+    activePersona,
+    activeCast,
+    knowledgeEnabled,
+    setKnowledgeEnabled,
+    lastKnowledgeHits,
+    activeMemory,
+    memoryState,
+    activeWorldTitle,
+    activeUserRoleName,
+    latestMessageIds,
+    markLatest,
+    ensureConversation,
+    loadConversations,
+    openConversation,
+    loadMemoryForConversation,
+    triggerMemory,
+    clearMemory,
+    startPlainConversation,
+    startRoleplayConversation,
+    startGroupConversation,
+    runGroupOpening,
+    switchToPlain,
+    switchToPersona,
+    updateConversationMeta,
+    deleteConversationById,
+    exportConversationById,
+    appendAssistantContent,
+    submit,
+    runGroupTurn,
+  } = conversation;
+
   function handleImageFile(file: File) {
     const message = handleImageFileAction(file);
     if (message) setError(message);
@@ -234,12 +242,9 @@ export default function HomePage() {
     await removeWorldAction(worldId);
   }
 
-  function markLatest(...ids: string[]) {
-    setLatestMessageIds((current) => {
-      const next = new Set(current);
-      for (const id of ids) next.add(id);
-      return next;
-    });
+  async function logout() {
+    await logoutAccountAction();
+    setView("home");
   }
 
   function isSessionError(error: unknown): boolean {
@@ -259,25 +264,6 @@ export default function HomePage() {
     return error instanceof Error ? error.message : "操作失败。";
   }
 
-  async function ensureConversation(): Promise<string | null> {
-    if (conversationId) return conversationId;
-    try {
-      const conversation = await createConversation();
-      setConversationId(conversation.id);
-      setConversations((current) => [conversation, ...current]);
-      return conversation.id;
-    } catch {}
-    return null;
-  }
-
-  async function loadConversations() {
-    try {
-      setConversations(await listConversations());
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
   async function openTools(tab: "ledger" | "keys" | "quota" | "voice" | "media") {
     setToolsTab(tab);
     setToolsOpen(true);
@@ -285,61 +271,6 @@ export default function HomePage() {
     if (tab === "keys") await loadKeys();
     if (tab === "voice") await loadVoiceSettings();
     if (tab === "media") await loadMediaSettings();
-  }
-
-  async function openConversation(id: string) {
-    if (!id) return;
-    abortRef.current?.abort();
-    setView("chat");
-    setError("");
-    try {
-      const detail = await getConversationDetail(id);
-      setConversationId(detail.id);
-      setMessages(detail.messages);
-      setLatestMessageIds(new Set());
-      setActivePersona(detail.persona ?? undefined);
-      setActiveCast(detail.cast ?? []);
-      setActiveWorldTitle(detail.world?.snapshot.title ?? null);
-      setActiveUserRoleName(detail.userRole?.name ?? null);
-      setLastKnowledgeHits(null);
-      void loadMemoryForConversation(id);
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) setError(message);
-    }
-  }
-
-  async function loadMemoryForConversation(id: string) {
-    try {
-      const memory = await getConversationMemory(id);
-      setActiveMemory(memory.summary);
-      setMemoryState("idle");
-    } catch (error) {
-      handleConversationError(error);
-    }
-  }
-
-  async function triggerMemory(conversationId: string) {
-    setMemoryState("generating");
-    try {
-      const result = await refreshConversationMemory(conversationId);
-      if (result.updated && result.summary) setActiveMemory(result.summary);
-      setMemoryState("idle");
-    } catch (error) {
-      handleConversationError(error);
-      setMemoryState("error");
-    }
-  }
-
-  async function clearMemory() {
-    if (!conversationId) return;
-    try {
-      await clearConversationMemory(conversationId);
-      setActiveMemory(null);
-      setMemoryState("idle");
-    } catch (error) {
-      handleConversationError(error);
-    }
   }
 
   function navigate(nextView: AppView) {
@@ -353,571 +284,6 @@ export default function HomePage() {
     setSetupOpen(true);
   }
 
-  async function startPlainConversation() {
-    const conversation = await createConversation({ mode: "chat" });
-    setConversationId(conversation.id);
-    setConversations((current) => [conversation, ...current]);
-    setMessages([]);
-    setLatestMessageIds(new Set());
-    setActivePersona(undefined);
-    setActiveCast([]);
-    setActiveWorldTitle(null);
-    setActiveUserRoleName(null);
-    setError("");
-    setSetupOpen(false);
-    setView("chat");
-  }
-
-  async function startRoleplayConversation(
-    persona: Persona,
-    saveToLibrary: boolean,
-    knowledge?: KnowledgeDraft,
-  ) {
-    let target = persona;
-    if (saveToLibrary) {
-      target = await createLibraryPersona(persona);
-    }
-    const conversation = await createConversation({ mode: "roleplay", persona: target });
-    if (knowledge) {
-      try {
-        await uploadInitialKnowledge(target.id, knowledge);
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "初始资料上传失败。");
-      }
-    }
-    setConversationId(conversation.id);
-    setConversations((current) => [conversation, ...current]);
-    setMessages([]);
-    setLatestMessageIds(new Set());
-    setActivePersona(target);
-    setActiveCast([]);
-    setActiveWorldTitle(null);
-    setActiveUserRoleName(null);
-    setError("");
-    setSetupOpen(false);
-    setSetupWorldId(null);
-    setDetail({ open: false });
-    setView("chat");
-  }
-
-  async function startGroupConversation(
-    cast: Persona[],
-    director?: Persona,
-    world?: { worldId: string; snapshot: WorldSnapshot },
-    userRole?: { name: string; description: string },
-  ) {
-    const selectedWorld = world && world.snapshot ? world : undefined;
-    const conversation = await createConversation({ mode: "group", cast, director, world: selectedWorld, userRole });
-    setConversationId(conversation.id);
-    setConversations((current) => [conversation, ...current]);
-    setMessages([]);
-    setLatestMessageIds(new Set());
-    setActivePersona(undefined);
-    setActiveCast(cast);
-    setActiveWorldTitle(selectedWorld?.snapshot.title ?? null);
-    setActiveUserRoleName(userRole?.name ?? null);
-    setError("");
-    setSetupOpen(false);
-    setDetail({ open: false });
-    setView("chat");
-    void runGroupOpening(conversation.id, cast.map((persona) => persona.name));
-  }
-
-  async function runGroupOpening(targetConversationId: string, castNames: string[]) {
-    const openingMessages: ChatRequestMessage[] = [{ role: "user", content: "开始群聊" }];
-    const traceId = createTraceId();
-    try {
-      const schedule = await requestGroupSchedule({
-        model,
-        messages: openingMessages,
-        knowledge: false,
-        conversationId: targetConversationId,
-        opening: true,
-        clientRequestId: createClientRequestId(),
-        traceId,
-      });
-      const speakers = schedule.speakers;
-      const turnKey = crypto.randomUUID();
-      const messageIdBySpeaker = new Map(
-        speakers.map((speaker) => [speaker.id, `group-${speaker.id}-${turnKey}`]),
-      );
-      setMessages((current) => [
-        ...current,
-        ...speakers.map((speaker) => ({
-          id: messageIdBySpeaker.get(speaker.id) as string,
-          role: "assistant" as const,
-          content: "",
-          personaId: speaker.id,
-        })),
-      ]);
-      markLatest(...messageIdBySpeaker.values());
-      await Promise.allSettled(
-        speakers.map(async (speaker) => {
-          const messageId = messageIdBySpeaker.get(speaker.id) as string;
-          const prefixStripper = createSpeakerPrefixStripper(speaker.name);
-          let content = "";
-          try {
-            await streamChatCompletion(
-              {
-                model,
-                messages: openingMessages,
-                knowledge: false,
-                conversationId: targetConversationId,
-                speakerId: speaker.id,
-                opening: true,
-                clientRequestId: createClientRequestId(),
-                traceId,
-              },
-              {
-                onDelta: (delta) => {
-                  const cleaned = prefixStripper.push(delta);
-                  if (cleaned) {
-                    content += cleaned;
-                    setMessages((current) =>
-                      current.map((message) =>
-                        message.id === messageId ? { ...message, content: message.content + cleaned } : message,
-                      ),
-                    );
-                  }
-                },
-              },
-            );
-          } catch (error) {
-            if (isSessionError(error)) handleSessionExpired();
-            return;
-          }
-          if (!content) return;
-          if (containsOtherSpeakerSpeech(content, speaker.name, castNames)) {
-            setMessages((current) => current.filter((message) => message.id !== messageId));
-            return;
-          }
-          try {
-            await appendConversationMessage(targetConversationId, {
-              id: messageId,
-              role: "assistant",
-              content,
-              personaId: speaker.id,
-              traceId,
-            });
-          } catch {
-            // 开场保存失败不阻断后续会话。
-          }
-        }),
-      );
-      await loadBalance();
-      await loadConversations();
-    } catch (error) {
-      if (isSessionError(error)) handleSessionExpired();
-      // 开场失败不阻断，用户直接说话即可。
-    }
-  }
-
-  async function switchToPlain() {
-    const recent = conversations.find(
-      (conversation) => conversation.mode === "chat" && !conversation.archived,
-    );
-    if (recent) {
-      await openConversation(recent.id);
-      return;
-    }
-    await startPlainConversation();
-  }
-
-  async function switchToPersona(persona: Persona) {
-    const recent = conversations.find(
-      (conversation) => conversation.personaId === persona.id && !conversation.archived,
-    );
-    if (recent) {
-      await openConversation(recent.id);
-      return;
-    }
-    await startRoleplayConversation(persona, false);
-  }
-
-  async function updateConversationMeta(id: string, patch: { title?: string; pinned?: boolean; archived?: boolean }) {
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === id
-          ? {
-              ...conversation,
-              title: patch.title?.trim() || conversation.title,
-              pinned: patch.pinned ?? conversation.pinned,
-              archived: patch.archived ?? conversation.archived,
-            }
-          : conversation,
-      ),
-    );
-    try {
-      await updateConversation(id, patch);
-    } catch (error) {
-      handleConversationError(error);
-      await loadConversations();
-    }
-  }
-
-  async function deleteConversationById(id: string) {
-    if (!window.confirm("删除该会话？此操作不可恢复。")) return;
-    try {
-      await deleteConversation(id);
-    } catch (error) {
-      handleConversationError(error);
-      return;
-    }
-    if (id === conversationId) {
-      setConversationId(null);
-      setMessages([]);
-      setLatestMessageIds(new Set());
-      setActivePersona(undefined);
-      setActiveCast([]);
-    }
-    await loadConversations();
-  }
-
-  async function exportConversationById(id: string) {
-    try {
-      const exported = await exportConversation(id);
-      const blob = new Blob([exported.text], { type: "application/json;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = exported.filename;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      const message = handleConversationError(error);
-      if (message) setError(message);
-    }
-  }
-
-  useEffect(() => {
-    void loadAccountSession()
-      .then((result) => {
-        if (result.status === "authenticated") {
-          const { identity, subject, models, sessionQuotaUnits, expiresAt } = result.session;
-          setSession({ status: "authenticated", identity, subject, models, sessionQuotaUnits, expiresAt });
-          setModel(models[0] ?? "");
-          void loadBalance();
-          void loadConversations();
-          void loadPersonas();
-          void loadFavorites();
-          void loadUserKnowledge();
-          void loadVoiceSettings();
-          void loadWorlds();
-          return;
-        }
-        if (result.status === "unavailable") {
-          setSession({ status: "anonymous", message: result.message });
-          return;
-        }
-        setSession({ status: "anonymous" });
-      })
-      .catch(() => setSession({ status: "anonymous" }));
-  }, []);
-
-  async function logout() {
-    await logoutAccountAction();
-    setView("home");
-  }
-
-  function appendAssistantContent(id: string, content: string) {
-    setMessages((current) =>
-      current.map((message) => (message.id === id ? { ...message, content: message.content + content } : message)),
-    );
-  }
-
-  async function submit() {
-    const content = prompt.trim();
-    if (!content || pending || session.status !== "authenticated" || !model) return;
-    let finalContent = content;
-    if (pendingImage) {
-      try {
-        const visionText = await describeImage(
-          pendingImage,
-          "结合当前对话，用 100 字以内简要描述这张图片的内容。",
-        );
-        finalContent = content
-          ? `${content}\n\n（用户附带了一张图片：${visionText}）`
-          : `（用户发来一张图片：${visionText}）`;
-      } catch (reason) {
-        const message = handleConversationError(reason);
-        setError(message ?? "图片理解失败。");
-        return;
-      }
-    }
-    const retry = !pendingImage && lastFailedRef.current?.content === content;
-    const clientRequestId = retry && lastFailedRef.current ? lastFailedRef.current.clientRequestId : createClientRequestId();
-    const traceId = createTraceId();
-    if (retry) lastFailedRef.current = null;
-    const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
-    const activeMode = activeConversation?.mode ?? "chat";
-    const userMessage = newMessage("user", finalContent);
-    setPendingImage(null);
-    const assistantMessage = newMessage("assistant", "");
-    const targetConversationId = await ensureConversation();
-    if (!targetConversationId) {
-      setError("会话初始化失败，请刷新后重试。");
-      return;
-    }
-    const systemMessages: { role: "system"; content: string }[] =
-      activeMode === "roleplay" && activePersona
-        ? [{ role: "system", content: personaSystemPrompt(activePersona) }]
-        : [];
-    const requestMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
-      ...systemMessages,
-      ...messages,
-      userMessage,
-    ].map(({ role, content: messageContent }) => ({ role, content: messageContent }));
-    if (activeMode === "group" && activeCast.length > 0) {
-      setMessages((current) => [...current, userMessage]);
-      markLatest(userMessage.id);
-      setPrompt("");
-      setError("");
-      setPending(true);
-      const controller = new AbortController();
-      abortRef.current = controller;
-      try {
-        await appendConversationMessage(targetConversationId, {
-          id: userMessage.id,
-          role: "user",
-          content: userMessage.content,
-        });
-        await runGroupTurn(targetConversationId, requestMessages, controller, traceId);
-      } catch (reason) {
-        const message = handleConversationError(reason);
-        if (!controller.signal.aborted && message) {
-          setError(message);
-          setPrompt(content);
-          lastFailedRef.current = { content, clientRequestId };
-        }
-      } finally {
-        if (abortRef.current === controller) abortRef.current = null;
-        setPending(false);
-      }
-      return;
-    }
-    setMessages((current) => [...current, userMessage, assistantMessage]);
-    markLatest(userMessage.id, assistantMessage.id);
-    setPrompt("");
-    setError("");
-    setPending(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      await appendConversationMessage(targetConversationId, {
-        id: userMessage.id,
-        role: "user",
-        content: userMessage.content,
-      });
-      const result = await streamChatCompletion(
-        {
-          model,
-          messages: requestMessages,
-          knowledge:
-            (activeMode === "roleplay" || activeMode === "group") &&
-            Boolean(activePersona || activeCast.length) &&
-            knowledgeEnabled,
-          conversationId: targetConversationId,
-          clientRequestId,
-          traceId,
-          signal: controller.signal,
-        },
-        {
-          onDelta: (delta) => appendAssistantContent(assistantMessage.id, delta),
-        },
-      );
-      setLastKnowledgeHits(result.knowledgeHits);
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantMessage.id
-            ? {
-                ...message,
-                requestId: result.requestId,
-                usage: result.usage
-                  ? {
-                      prompt: result.usage.prompt ?? 0,
-                      completion: result.usage.completion ?? 0,
-                    }
-                  : undefined,
-              }
-            : message,
-        ),
-      );
-      await appendConversationMessage(targetConversationId, {
-        id: assistantMessage.id,
-        role: "assistant",
-        content: result.content,
-        traceId,
-        requestId: result.requestId,
-        usage: result.usage
-          ? {
-              prompt: result.usage.prompt ?? 0,
-              completion: result.usage.completion ?? 0,
-            }
-          : undefined,
-      });
-      await loadBalance();
-      await loadConversations();
-      const completedCount = messages.length + 2;
-      if (activeMode === "roleplay" && completedCount >= 15 && completedCount % 15 === 0) {
-        void triggerMemory(targetConversationId);
-      }
-    } catch (reason) {
-      const message = handleConversationError(reason);
-      if (!controller.signal.aborted && message) {
-        setError(message);
-        setPrompt(content);
-        lastFailedRef.current = { content, clientRequestId };
-      }
-      setMessages((current) =>
-        current.filter((message) => message.id !== assistantMessage.id || message.content.length > 0),
-      );
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-      setPending(false);
-    }
-  }
-
-  async function runGroupTurn(
-    targetConversationId: string,
-    requestMessages: ChatRequestMessage[],
-    controller: AbortController,
-    traceId: string,
-  ) {
-    const schedule = await requestGroupSchedule({
-      model,
-      messages: requestMessages,
-      knowledge: Boolean(activeCast.length) && knowledgeEnabled,
-      conversationId: targetConversationId,
-      clientRequestId: createClientRequestId(),
-      traceId,
-      signal: controller.signal,
-    });
-    const speakers = schedule.speakers;
-    const turnKey = crypto.randomUUID();
-    const messageIdBySpeaker = new Map(speakers.map((speaker) => [speaker.id, `group-${speaker.id}-${turnKey}`]));
-    setMessages((current) => [
-      ...current,
-      ...speakers.map((speaker) => ({
-        id: messageIdBySpeaker.get(speaker.id) as string,
-        role: "assistant" as const,
-        content: "",
-        personaId: speaker.id,
-      })),
-    ]);
-    markLatest(...messageIdBySpeaker.values());
-    const results = await Promise.allSettled(
-      speakers.map(async (speaker) => {
-        const messageId = messageIdBySpeaker.get(speaker.id) as string;
-        const prefixStripper = createSpeakerPrefixStripper(speaker.name);
-        let content = "";
-        try {
-          const result = await streamChatCompletion(
-            {
-              model,
-              messages: requestMessages,
-              knowledge: Boolean(activeCast.length) && knowledgeEnabled,
-              conversationId: targetConversationId,
-              speakerId: speaker.id,
-              clientRequestId: createClientRequestId(),
-              traceId,
-              signal: controller.signal,
-            },
-            {
-              onDelta: (delta) => {
-                const cleaned = prefixStripper.push(delta);
-                if (cleaned) {
-                  content += cleaned;
-                  setMessages((current) =>
-                    current.map((message) =>
-                      message.id === messageId ? { ...message, content: message.content + cleaned } : message,
-                    ),
-                  );
-                }
-              },
-            },
-          );
-          if (!content) throw new ChatActionError("empty", `${speaker.name} 未返回可显示内容。`);
-          if (containsOtherSpeakerSpeech(content, speaker.name, activeCast.map((persona) => persona.name))) {
-            setMessages((current) =>
-              current.filter(
-                (message) =>
-                  !(message.role === "assistant" && message.personaId === speaker.id && message.id === messageId),
-              ),
-            );
-            return { skipped: true as const, name: speaker.name };
-          }
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === messageId
-                ? {
-                    ...message,
-                    requestId: result.requestId,
-                    usage: result.usage
-                      ? {
-                          prompt: result.usage.prompt ?? 0,
-                          completion: result.usage.completion ?? 0,
-                        }
-                      : undefined,
-                  }
-                : message,
-            ),
-          );
-          await appendConversationMessage(targetConversationId, {
-            id: messageId,
-            role: "assistant",
-            content,
-            personaId: speaker.id,
-            traceId,
-            requestId: result.requestId,
-            usage: result.usage
-              ? {
-                  prompt: result.usage.prompt ?? 0,
-                  completion: result.usage.completion ?? 0,
-                }
-              : undefined,
-          });
-          return { skipped: false as const };
-        } catch (error) {
-          if (isSessionError(error)) handleSessionExpired();
-          throw error;
-        }
-      }),
-    );
-    const skipped = results
-      .filter((result) => result.status === "fulfilled")
-      .map(
-        (result) =>
-          (result as PromiseFulfilledResult<{ skipped: boolean; name?: string }>).value,
-      )
-      .filter((value) => value.skipped)
-      .map((value) => value.name);
-    if (skipped.length > 0) {
-      setError(`${skipped.join("、")} 的回复越界替别人说话了，已收起；请以本人回复为准。`);
-    }
-    const failures = results.filter(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
-    );
-    if (failures.length > 0) {
-      const failedSpeakers = failures.map(
-        (failure) => (failure.reason instanceof Error ? failure.reason.message : "发言失败。"),
-      );
-      setMessages((current) =>
-        current.filter(
-          (message) =>
-            !(
-              message.role === "assistant" &&
-              message.content === "" &&
-              message.personaId &&
-              [...messageIdBySpeaker.values()].includes(message.id)
-            ),
-        ),
-      );
-      throw new Error(failedSpeakers.join("；"));
-    }
-    await loadBalance();
-    await loadConversations();
-    void triggerMemory(targetConversationId);
-  }
 
   const activeConversation = conversations.find((conversation) => conversation.id === conversationId);
   const activeMode = activeConversation?.mode ?? "chat";
