@@ -1,7 +1,7 @@
 # 燕中 AI 开发清单
 
 更新日期：2026-08-16  
-当前执行项：`AI-30`  
+当前执行项：`AI-31`  
 适用仓库：`ai_yanchuaner`
 
 本文只维护燕中 AI 当前可执行的开发队列。生态阶段以 `../docs/燕中生态项目关系.txt` 为准，系统边界以 `../docs/architecture.md` 和 `../docs/contracts.md` 为准，本仓实现方向以 `docs/architecture.md` 为准。
@@ -151,11 +151,13 @@
 
 依赖：`AI-10`、`AI-12`。
 
-- [ ] 在领域层实现版本化消息信封和内容块，不包含 Web `File`、SSE 原始行或供应商响应。
-- [ ] 实现 `run/step/message/capability` 的 started、completed、failed、cancelled 和 degraded 事件。
-- [ ] Web adapter 完成现有请求/响应与领域信封互转，并在边界执行 Schema 校验。
+- [x] 在领域层实现版本化消息信封和内容块，不包含 Web `File`、SSE 原始行或供应商响应。
+- [x] 实现 `run/step/message/capability` 的 started、completed、failed、cancelled 和 degraded 事件。
+- [x] Web adapter 完成现有请求/响应与领域信封互转，并在边界执行 Schema 校验。
 
 完成定义：领域测试不依赖 Next.js Request/Response；Web 是第一个真实接入适配器。
+
+2026-08-16 已合入：新增 `domain/message-envelope.ts`、`domain/workflow-events.ts`、`domain/web-adapter.ts`，消息信封 v1 与 run/step/message/capability 事件全部带边界校验。门禁：typecheck、197 项测试、构建、契约测试、依赖审计全部通过。
 
 ### AI-31 固化 `chat/v1`
 
