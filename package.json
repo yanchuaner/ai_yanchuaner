@@ -12,6 +12,7 @@
     "contracts:verify": "node scripts/contracts.mjs verify",
     "contracts:test": "node --test scripts/contracts.test.mjs",
     "contracts:sync": "node scripts/contracts.mjs sync",
+    "migrate:data": "pnpm --filter @yanchuaner/ai-web exec tsx scripts/migrate-data.ts",
     "audit:prod": "pnpm audit --prod --audit-level high",
     "release:check": "pnpm typecheck:ai-web && pnpm test:ai-web && pnpm build:ai-web && pnpm audit:prod"
   }
