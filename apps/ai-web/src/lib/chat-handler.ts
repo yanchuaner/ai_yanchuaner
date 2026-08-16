@@ -24,6 +24,7 @@ import { resolveRequestIds, type RequestIdBundle } from "@/lib/request-ids";
 import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
 import { ChatV1Error, runChatV1 } from "@/workflows/chat-v1";
 import { runRoleplayV1 } from "@/workflows/roleplay-v1";
+import { runGroupScheduleV1, runGroupSpeakerV1 } from "@/workflows/group-v1";
 
 export type ChatHandlerConfig = {
   publicUrl: URL;
@@ -140,21 +141,88 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
   }
   if (conversationDetail?.mode === "group" && conversationDetail.cast?.length) {
     const opening = candidate?.opening === true;
+    const latestUserContent =
+      [...parsed.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     if (candidate?.groupSchedule === true) {
-      return handleGroupSchedule(request, config, session, parsed, conversationDetail, fetcher, opening, ids);
+      try {
+        const result = await runGroupScheduleV1({
+          runId: `run_${ids.traceId}`,
+          conversationId: conversationDetail.id,
+          cast: conversationDetail.cast,
+          director: conversationDetail.director,
+          world: conversationDetail.world,
+          userRole: conversationDetail.userRole,
+          history: conversationDetail.messages,
+          latestUserContent,
+          opening,
+          model: parsed.model,
+          accessKey: session.credential.accessKey,
+          apiBaseUrl: config.yanCoreApiBaseUrl,
+          signal: request.signal,
+          traceId: ids.traceId,
+          clientRequestId: ids.clientRequestId,
+          onEvent: () => {},
+          fetcher,
+        });
+        const response = NextResponse.json({ speakers: result.speakers });
+        response.headers.set("X-Trace-ID", ids.traceId);
+        response.headers.set("X-Client-Request-ID", ids.clientRequestId);
+        return response;
+      } catch (error) {
+        if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
+          const revoked = NextResponse.json(
+            { error: error.message, code: "SESSION_REVOKED" },
+            { status: 401 },
+          );
+          revoked.cookies.set(SESSION_COOKIE, "", cookieOptions(config.publicUrl, 0));
+          return revoked;
+        }
+        return NextResponse.json(
+          { error: error instanceof ChatV1Error ? error.message : "群聊调度失败，请稍后再试。" },
+          { status: error instanceof ChatV1Error ? error.status : 502 },
+        );
+      }
     }
     if (typeof candidate?.speakerId === "string") {
-      return handleGroupSpeaker(
-        request,
-        config,
-        session,
-        parsed,
-        conversationDetail,
-        candidate.speakerId,
-        fetcher,
-        opening,
-        ids,
-      );
+      const speaker = conversationDetail.cast.find((persona) => persona.id === candidate.speakerId);
+      if (!speaker) return NextResponse.json({ error: "发言人不存在。" }, { status: 400 });
+      try {
+        return await runGroupSpeakerV1({
+          runId: `run_${ids.traceId}`,
+          conversationId: conversationDetail.id,
+          userId: session.subject.userId,
+          speaker,
+          cast: conversationDetail.cast,
+          director: conversationDetail.director,
+          world: conversationDetail.world,
+          userRole: conversationDetail.userRole,
+          history: conversationDetail.messages,
+          latestUserContent,
+          opening,
+          model: parsed.model,
+          embeddingModel: resolveEmbeddingModel(session),
+          accessKey: session.credential.accessKey,
+          apiBaseUrl: config.yanCoreApiBaseUrl,
+          signal: request.signal,
+          traceId: ids.traceId,
+          clientRequestId: ids.clientRequestId,
+          onEvent: () => {},
+          fetcher,
+        });
+      } catch (error) {
+        if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
+          const revoked = NextResponse.json(
+            { error: error.message, code: "SESSION_REVOKED" },
+            { status: 401 },
+          );
+          revoked.cookies.set(SESSION_COOKIE, "", cookieOptions(config.publicUrl, 0));
+          return revoked;
+        }
+        return NextResponse.json(
+          { error: error instanceof ChatV1Error ? error.message : `${speaker.name} 发言失败。` },
+          { status: error instanceof ChatV1Error ? error.status : 502 },
+        );
+      }
     }
   } else {
     // 非群聊会话继续走原有对话流程。
@@ -384,14 +452,14 @@ async function handleGroupSpeaker(
   return new Response(upstream.body, { status: upstream.status, headers });
 }
 
-function ensureLatestUser(history: StoredMessage[], parsed: AiChatRequest): StoredMessage[] {
+export function ensureLatestUser(history: StoredMessage[], parsed: AiChatRequest): StoredMessage[] {
   if ([...history].reverse().some((message) => message.role === "user")) return history;
   const fallback = [...parsed.messages].reverse().find((message) => message.role === "user")?.content;
   if (!fallback) return history;
   return [...history, { id: `pending-${Date.now()}`, role: "user", content: fallback }];
 }
 
-function buildSchedulerPrompt(
+export function buildSchedulerPrompt(
   cast: Persona[],
   director?: Persona,
   world?: ConversationDetail["world"],
@@ -461,7 +529,7 @@ export function parseSpeakerNames(raw: unknown, cast: Persona[]): Persona[] {
   return selected;
 }
 
-function pickFallbackSpeakers(cast: Persona[]): Persona[] {
+export function pickFallbackSpeakers(cast: Persona[]): Persona[] {
   const pool = [...cast];
   const first = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
   if (!first) return [];
@@ -472,7 +540,7 @@ function pickFallbackSpeakers(cast: Persona[]): Persona[] {
   return second ? [first, second] : [first];
 }
 
-function formatGroupHistory(
+export function formatGroupHistory(
   messages: StoredMessage[],
   cast: Persona[],
   userRoleName?: string,
@@ -505,7 +573,7 @@ function formatGroupHistory(
   return trimmed.reverse();
 }
 
-function buildGroupSpeakerPrompt(
+export function buildGroupSpeakerPrompt(
   speaker: Persona,
   cast: Persona[],
   director?: Persona,
@@ -546,7 +614,7 @@ function buildGroupSpeakerPrompt(
   return lines.join("\n\n").slice(0, 8000);
 }
 
-function buildWorldPrompt(world: ConversationDetail["world"]): string {
+export function buildWorldPrompt(world: ConversationDetail["world"]): string {
   if (!world) return "";
   const { title, description, timeline, outline } = world.snapshot;
   return [
@@ -559,7 +627,7 @@ function buildWorldPrompt(world: ConversationDetail["world"]): string {
     .join("\n");
 }
 
-function buildKnowledgePrompt(hits: KnowledgeHit[]): string {
+export function buildKnowledgePrompt(hits: KnowledgeHit[]): string {
   const lines = ["以下是角色资料库中检索到的片段。回答时优先使用这些资料，资料不足就明确说明："];
   let used = 0;
   for (const hit of hits) {
@@ -571,7 +639,7 @@ function buildKnowledgePrompt(hits: KnowledgeHit[]): string {
   return lines.join("\n\n");
 }
 
-function dedupeHits(hits: KnowledgeHit[]): KnowledgeHit[] {
+export function dedupeHits(hits: KnowledgeHit[]): KnowledgeHit[] {
   const seen = new Set<string>();
   return hits.filter((hit) => {
     if (seen.has(hit.text)) return false;
