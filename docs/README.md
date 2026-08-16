@@ -1,27 +1,35 @@
-# 燕中 AI 文档
+# 燕中 AI 文档索引
 
-## 当前规范
+本文档树与 `main @ v1.0.0` 代码同步。文档事实来源优先级：当前代码 > 测试 > 部署配置 > 设计文档。
+
+## 规范文档
 
 | 文档 | 回答的问题 |
 | --- | --- |
-| [architecture.md](architecture.md) | AI 使用层如何分层、现有实现如何迁移 |
-| [api-platform-integration.md](api-platform-integration.md) | AI 如何只通过统一 API 网关使用模型与账本 |
-| [deployment.md](deployment.md) | 如何部署、备份、恢复和检查运行环境 |
-| [yancore-subject-grant-client.md](yancore-subject-grant-client.md) | AI BFF 如何消费 YanCore 主体授权 |
-| [dependency-baseline.md](dependency-baseline.md) | 依赖、镜像与升级门禁 |
+| [architecture.md](architecture.md) | AI 使用层的分层、模块职责与当前实现映射 |
+| [workflow.md](workflow.md) | 工作流运行时、内置工作流与事件 |
+| [gateway.md](gateway.md) | 如何只通过统一 API 网关使用模型与账本 |
+| [capability.md](capability.md) | 能力注册表、能力 ID 与 adapter 契约 |
+| [repository.md](repository.md) | 仓储端口、文件适配器、并发锁与迁移 |
+| [observability.md](observability.md) | 事件脱敏、JSONL 导出、轮转与查询 |
+| [billing.md](billing.md) | 账本链路、幂等与故障场景 |
+| [deployment.md](deployment.md) | 生产部署、资源基线、备份恢复 |
+| [operations.md](operations.md) | 健康检查、日志、request_id 排查与故障处理 |
+| [security.md](security.md) | 信任边界、凭据与数据安全 |
+| [changelog.md](changelog.md) | 版本变更索引（正文见根 `CHANGELOG.md`） |
+
+## 依赖与来源
+
+| 文档 | 回答的问题 |
+| --- | --- |
+| [dependency-baseline.md](dependency-baseline.md) | 依赖、镜像摘要与升级门禁 |
 | [copyright-matrix.md](copyright-matrix.md) | 自主代码、参考、依赖与第三方归属 |
 
-## 生态契约快照
+## CI 与运维入口
 
-`contracts/manifest.json` 固定 AI 当前消费的七类生态 Schema 及其共享定义，来源为治理仓的不可变提交。使用 `pnpm contracts:verify` 可离线校验提交摘要、路径边界和 JSON Schema；只有在 manifest 已记录不可变提交与 SHA-256 时才可运行 `pnpm contracts:sync` 从该提交同步。工作流事件与消息信封已部分接入运行时，完整 Schema 校验仍以 Web adapter 与事件边界为准。
+`.github/workflows/ci.yml` 在 pull request 与 main 推送时自动执行：`pnpm install --frozen-lockfile`、typecheck、test、`pnpm test:ops`、build、`contracts:verify` 与 `release:check`。任何一步失败都会让检查状态变为失败；把该 workflow 配置为 GitHub required check 仍是仓库设置待办（见 [operations.md](operations.md)）。
 
-## CI 门禁
-
-`.github/workflows/ci.yml` 在 pull request 与 main 推送时自动执行：`pnpm install --frozen-lockfile`、typecheck、test、build、`contracts:verify` 与 `release:check`。任何一步失败都会让检查状态变为失败；main 分支的强制保护应在 GitHub 仓库设置中把该 workflow 配置为 required check。
-
-## 故障注入验收脚本
-
-`scripts/acceptance/run-fault-injection.mjs` 固化 AI-61 的受控故障注入：
+受控故障注入脚本 `scripts/acceptance/run-fault-injection.mjs` 支持五个场景：
 
 ```bash
 node scripts/acceptance/run-fault-injection.mjs --scenario quota-failure
@@ -31,20 +39,19 @@ node scripts/acceptance/run-fault-injection.mjs --scenario credential-revoke
 node scripts/acceptance/run-fault-injection.mjs --scenario stream-abort
 ```
 
-每个场景都会创建可撤销测试资源、执行请求、校验 HTTP 状态/错误码/账本，并在结束后自动清理；输出 machine-readable JSON report。
+每个场景创建可撤销测试资源、执行请求、校验 HTTP 状态/错误码/账本，结束后自动清理，输出 machine-readable JSON report。
 
-## 观测事件落盘
+## 已知缺口（v1.0 文档冻结时如实登记）
 
-生产通过 `AI_WEB_OBSERVABILITY_FILE` 指定 JSONL 观测文件（默认 `/data/observability/events.jsonl`）。事件先经 `sanitize` 再落盘，仅保存 schema/event/run/step/capability/trace/request/conversation/duration/outcome/error 等字段；消息正文、token、api key、cookie、grant 不会写入。管理员可用 `GET /api/admin/observability/events?requestId=...` 查询。
+以下问题不属于“已实现”能力，修复前不得在文档中描述为完成：
 
-文件按 `AI_WEB_OBSERVABILITY_MAX_BYTES`（默认 50 MiB）轮转，保留 `AI_WEB_OBSERVABILITY_KEEP_ROTATED`（默认 5）个历史文件；查询会跨当前与历史文件检索，单行损坏不中断查询。
-
-## 运维脚本
-
-- `pnpm test:ops`：Docker 集成测试，验证 ai-web 数据卷归档 create/restore 闭环（无 Docker 环境自动跳过）。
-- `bash scripts/disk-governance.sh [--dry-run]`：清理悬空镜像/构建缓存并保留最新 5 个 ai-web 日期镜像。
-
-生态级身份、网关、工作流、计费和观测语义由工作区根 `docs/architecture.md`、`docs/contracts.md`、`docs/extensions.md`、`docs/billing-and-ledger.md` 与 `docs/observability.md` 定义。本目录只补充 AI 仓库实现。生态治理仓尚未公开前不维护越出本仓根目录的 Markdown 链接；发布后改为固定版本链接。
+- 观测事件 schema 允许 `durationMs`/`outcome`，但运行时尚未真实生成（见 [observability.md](observability.md)）。
+- `scripts/health-check.sh` 未包含 ai-web 服务（见 [operations.md](operations.md)）。
+- 配置错误不会 fail-fast，容器会以 `/api/health=503` 保持运行（见 [operations.md](operations.md)）。
+- 消息记录尚未补齐 `schemaVersion`，数据迁移未接入启动流程（见 [repository.md](repository.md)）。
+- 消息 `request_id`/usage 与网关账本只有人工核对脚本，没有定时自动对账（见 [billing.md](billing.md)）。
+- GitHub main 分支保护与 required check 尚未在仓库设置中启用（见 [operations.md](operations.md)）。
+- 磁盘水位没有告警通道，只有清理脚本（见 [operations.md](operations.md)）。
 
 ## 历史与验收记录
 
@@ -57,12 +64,9 @@ node scripts/acceptance/run-fault-injection.mjs --scenario stream-abort
 - `phase-3-openwebui-oidc-acceptance.md`
 - `litellm-openwebui-poc.md`
 - `staging-readiness.md`
-
-历史记录中的“当前限制”“下一步”和部署角色按文档日期理解；当前阶段只以根级 `燕中生态项目关系.txt` 为准。
-
-## 产品与领域设计
-
-AI 产品蓝图、RAG 与故事世界的跨仓设计位于工作区根 `docs/`。实现时先遵守本仓架构，再引用这些产品文档，避免把页面流程直接写成跨系统协议。
+- `yancore-subject-grant-client.md`
+- `ai-61-real-gateway-acceptance.md`
+- `yanzhong-ecosystem-vision.md`
 
 ## 维护规则
 
@@ -70,4 +74,4 @@ AI 产品蓝图、RAG 与故事世界的跨仓设计位于工作区根 `docs/`�
 - 稳定规范与一次性验收记录分开。
 - 路径、端点、环境变量和命令必须与代码核对。
 - 新能力同步记录所有权、scope、计费类别、失败语义、观测和数据删除方式。
-- 不复制根级状态或契约；治理仓发布后使用固定版本链接引用。
+- 不复制根级状态或契约；生态治理仓发布后使用固定版本链接引用。

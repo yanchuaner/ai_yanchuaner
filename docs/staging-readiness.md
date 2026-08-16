@@ -2,6 +2,8 @@
 
 阶段 4B 在真实供应商和 HTTPS 环境切换前执行配置门禁。检查脚本不会打印 Secret，也不会发起模型调用。
 
+> 状态更新（2026-08-17）：预算耗尽、失败退款、限流、凭证撤销与断流已由 `docs/ai-61-real-gateway-acceptance.md` 真实验收；本文保留历史门禁检查项。仍待：跨供应商故障切换、Open WebUI 逐用户归因（已转内网）。
+
 ## 检查内容
 
 - AI Web、主站 OIDC、OIDC discovery、OAuth callback、Open WebUI 和 CORS 使用 HTTPS。
