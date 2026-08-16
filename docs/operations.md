@@ -88,7 +88,7 @@ bash scripts/disk-governance.sh --check
 pnpm reconcile:ledger
 ```
 
-脚本拉取本地会话消息的 `request_id`/usage，与网关 `logs`、`quota_ledger_entries` 比对，输出 machine-readable JSON；发现缺日志、缺账本、悬挂 reserve、usage/金额不一致时退出码为 1。建议与备份 cron 一起每周执行。
+脚本拉取本地会话消息的 `request_id`/usage，与网关 `logs`、`quota_ledger_entries` 比对，输出 machine-readable JSON；发现缺日志、缺账本、悬挂 reserve、usage/金额不一致时退出码为 1。在服务器本机执行时加 `--local`（避免 SSH 回环）；建议与备份 cron 一起每周执行。
 
 ## 故障处理
 
@@ -116,4 +116,4 @@ pnpm reconcile:ledger
 
 - 磁盘告警为脚本级（日志 + 退出码），尚无外部告警通道（邮件/IM）。
 - 备份离站副本仍为人工同步。
-- 观测查询无索引；写中断可能残留 `.tmp` 文件。
+- 观测查询无索引。
