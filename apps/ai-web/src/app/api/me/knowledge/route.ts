@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiWebConfig } from "@/lib/config";
 import { createSessionEmbedder, resolveEmbeddingModel } from "@/lib/knowledge-embedding";
-import {
-  addUserKnowledgeDocument,
-  deleteUserKnowledge,
-  getUserKnowledgeSummary,
-} from "@/lib/knowledge-library";
+import { createFileKnowledgeRepository } from "@/lib/knowledge-file-repository";
 import { parseKnowledgeRequest } from "@/lib/knowledge-request";
 import { requireAiSession } from "@/lib/session-guard";
 
@@ -25,7 +21,7 @@ function errorText(error: unknown): string {
 export async function GET(request: NextRequest) {
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
-  const summary = await getUserKnowledgeSummary(guard.session.subject.userId);
+  const summary = await createFileKnowledgeRepository().getSummary(guard.session.subject.userId);
   return NextResponse.json({ ...summary });
 }
 
@@ -38,8 +34,14 @@ export async function POST(request: NextRequest) {
     const model = resolveEmbeddingModel(guard.session);
     if (!model) throw new Error("embedding model unavailable");
     const embedder = createSessionEmbedder(guard.session, model, getAiWebConfig().yanCoreApiBaseUrl);
-    const added = await addUserKnowledgeDocument(guard.session.subject.userId, parsed.data, model, embedder);
-    return NextResponse.json({ document: added.document, model: added.model });
+    const document = await createFileKnowledgeRepository().addText(
+      guard.session.subject.userId,
+      null,
+      parsed.data,
+      model,
+      embedder,
+    );
+    return NextResponse.json({ document, model });
   } catch (error) {
     return NextResponse.json({ error: errorText(error) }, { status: 400 });
   }
@@ -48,6 +50,6 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
-  await deleteUserKnowledge(guard.session.subject.userId);
+  await createFileKnowledgeRepository().deleteScope(guard.session.subject.userId);
   return NextResponse.json({ success: true });
 }

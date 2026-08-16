@@ -3,8 +3,8 @@
 import type { AiChatMessage } from "@/lib/chat";
 import { forwardChatCompletion } from "@/lib/chat";
 import { requestEmbeddings } from "@/lib/embedding";
-import { searchPersonaKnowledge, searchUserKnowledge } from "@/lib/knowledge-library";
-import { getPersonaMemory } from "@/lib/memory-library";
+import { createFileKnowledgeRepository } from "@/lib/knowledge-file-repository";
+import { createFileMemoryRepository } from "@/lib/memory-file-repository";
 import { runWorkflow } from "@/domain/workflow-runtime";
 import type { WorkflowEvent } from "@/domain/workflow-events";
 import { ChatV1Error } from "@/workflows/chat-v1";
@@ -66,7 +66,7 @@ export async function runRoleplayV1(input: RoleplayV1Input): Promise<Response> {
           if (world) contributions.push(world);
 
           try {
-            const memory = await getPersonaMemory(input.userId, input.persona.id);
+            const memory = await createFileMemoryRepository().get(input.userId, input.persona.id);
             const contribution = memoryContributor(memory);
             if (contribution) contributions.push(contribution);
           } catch (error) {
@@ -88,9 +88,10 @@ export async function runRoleplayV1(input: RoleplayV1Input): Promise<Response> {
               );
               const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
               const safeThreshold = Number.isFinite(threshold) ? threshold : 0.3;
+              const repository = createFileKnowledgeRepository();
               const [personaHits, userHits] = await Promise.all([
-                searchPersonaKnowledge(input.userId, input.persona.id, embedded.vectors[0], 4, safeThreshold),
-                searchUserKnowledge(input.userId, embedded.vectors[0], 2, safeThreshold),
+                repository.search(input.userId, input.persona.id, embedded.vectors[0], 4, safeThreshold),
+                repository.search(input.userId, null, embedded.vectors[0], 2, safeThreshold),
               ]);
               const contribution = knowledgeContributor([...personaHits, ...userHits].slice(0, 4));
               if (contribution) {

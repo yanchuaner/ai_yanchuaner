@@ -14,8 +14,8 @@ import {
   parseSpeakerNames,
   pickFallbackSpeakers,
 } from "@/lib/chat-handler";
-import { searchPersonaKnowledge, searchUserKnowledge } from "@/lib/knowledge-library";
-import { getPersonaMemory } from "@/lib/memory-library";
+import { createFileKnowledgeRepository } from "@/lib/knowledge-file-repository";
+import { createFileMemoryRepository } from "@/lib/memory-file-repository";
 import { runWorkflow } from "@/domain/workflow-runtime";
 import type { WorkflowEvent } from "@/domain/workflow-events";
 import { ChatV1Error } from "@/workflows/chat-v1";
@@ -162,7 +162,7 @@ export async function runGroupSpeakerV1(input: GroupSpeakerV1Input): Promise<Res
             );
           }
           try {
-            const memory = await getPersonaMemory(input.userId, input.speaker.id);
+            const memory = await createFileMemoryRepository().get(input.userId, input.speaker.id);
             if (memory?.summary) systemBlocks.push(`【角色长期记忆】\n${memory.summary}`);
           } catch (error) {
             context.emit("step", "degraded", {
@@ -182,9 +182,10 @@ export async function runGroupSpeakerV1(input: GroupSpeakerV1Input): Promise<Res
               );
               const threshold = Number(process.env.AI_WEB_KNOWLEDGE_THRESHOLD || 0.3);
               const safeThreshold = Number.isFinite(threshold) ? threshold : 0.3;
+              const repository = createFileKnowledgeRepository();
               const [personaHits, userHits] = await Promise.all([
-                searchPersonaKnowledge(input.userId, input.speaker.id, embedded.vectors[0], 3, safeThreshold),
-                searchUserKnowledge(input.userId, embedded.vectors[0], 2, safeThreshold),
+                repository.search(input.userId, input.speaker.id, embedded.vectors[0], 3, safeThreshold),
+                repository.search(input.userId, null, embedded.vectors[0], 2, safeThreshold),
               ]);
               const hits = dedupeHits([...personaHits, ...userHits]).slice(0, 4);
               if (hits.length > 0) {

@@ -2,12 +2,8 @@
 
 import type { ConversationDetail } from "@/lib/conversations";
 import { generateConversationMemory } from "@/lib/memory-generator";
-import {
-  clearPersonaMemory,
-  getPersonaMemory,
-  savePersonaMemory,
-  type PersonaMemory,
-} from "@/lib/memory-library";
+import { createFileMemoryRepository } from "@/lib/memory-file-repository";
+import type { PersonaMemory } from "@/lib/memory-library";
 import type { Persona } from "@/lib/personas";
 
 export const MIN_MESSAGES = 15;
@@ -32,7 +28,7 @@ export async function listConversationMemories(
     memoryTargets(detail).map(async (persona) => ({
       personaId: persona.id,
       name: persona.name,
-      memory: await getPersonaMemory(userId, persona.id),
+      memory: await createFileMemoryRepository().get(userId, persona.id),
     })),
   );
 }
@@ -53,7 +49,7 @@ export async function updateConversationMemories(
   const speakerMap = Object.fromEntries(targets.map((persona) => [persona.id, persona.name]));
   const stale = [];
   for (const persona of targets) {
-    const existing = await getPersonaMemory(userId, persona.id);
+    const existing = await createFileMemoryRepository().get(userId, persona.id);
     if (!existing || detail.messages.length - existing.messageCount >= UPDATE_STEP) {
       stale.push(persona);
     }
@@ -75,7 +71,7 @@ export async function updateConversationMemories(
     }),
   );
   for (const item of generated) {
-    await savePersonaMemory(userId, {
+    await createFileMemoryRepository().save(userId, {
       personaId: item.persona.id,
       summary: item.summary,
       sourceConversationId: detail.id,
@@ -90,6 +86,6 @@ export async function clearConversationMemories(
   detail: ConversationDetail,
 ): Promise<void> {
   await Promise.all(
-    memoryTargets(detail).map((persona) => clearPersonaMemory(userId, persona.id)),
+    memoryTargets(detail).map((persona) => createFileMemoryRepository().clear(userId, persona.id)),
   );
 }
