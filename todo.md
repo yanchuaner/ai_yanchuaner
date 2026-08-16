@@ -1,7 +1,7 @@
 # 燕中 AI 开发清单
 
 更新日期：2026-08-16  
-当前执行项：`AI-51`  
+当前执行项：`AI-60`  
 适用仓库：`ai_yanchuaner`
 
 本文只维护燕中 AI 当前可执行的开发队列。生态阶段以 `../docs/燕中生态项目关系.txt` 为准，系统边界以 `../docs/architecture.md` 和 `../docs/contracts.md` 为准，本仓实现方向以 `docs/architecture.md` 为准。
@@ -267,12 +267,14 @@
 
 依赖：`AI-12`、`AI-30`。
 
-- [ ] 统一发布工作流、步骤、上下文降级、网关请求、会话撤销和仓储迁移事件。
-- [ ] 事件包含版本、conversation、trace、request、step、duration、outcome 和稳定错误码。
-- [ ] 导出器失败不阻断主链，具备背压与降级；普通日志不包含消息、知识、上传、Cookie、Key 或 grant。
-- [ ] 使用敏感样本测试日志和事件脱敏。
+- [x] 统一发布工作流、步骤、上下文降级、网关请求、会话撤销和仓储迁移事件。
+- [x] 事件包含版本、conversation、trace、request、step、duration、outcome 和稳定错误码。
+- [x] 导出器失败不阻断主链，具备背压与降级；普通日志不包含消息、知识、上传、Cookie、Key 或 grant。
+- [x] 使用敏感样本测试日志和事件脱敏。
 
 完成定义：可按一次用户操作查询全部工作流步骤、模型请求与失败位置，且扫描结果不含禁止字段。
+
+2026-08-17 已合入：新增 `observability/port.ts` 与 `observability/sanitize.ts`，工作流事件统一经脱敏 sink 发布，导出器失败不阻断主链。门禁：typecheck、237 项测试、构建、契约测试、依赖审计全部通过。
 
 ## M6：验收与阶段收口
 
