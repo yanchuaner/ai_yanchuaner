@@ -3,6 +3,7 @@
 import { Plus, Star, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { type Persona } from "@/lib/personas";
+import { importPersonaCard } from "@/lib/persona-actions";
 import styles from "./persona-library.module.css";
 
 type PersonaLibraryProps = {
@@ -56,14 +57,7 @@ export function PersonaLibrary({
     try {
       const text = await file.text();
       const card = JSON.parse(text);
-      const response = await fetch("/api/personas/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ card }),
-      });
-      if (response.status === 401) return;
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "导入角色失败。");
+      await importPersonaCard(card);
       await onRefreshLibrary();
     } catch (reason) {
       setImportError(reason instanceof Error ? reason.message : "导入角色失败。");

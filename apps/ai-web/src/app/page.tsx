@@ -60,6 +60,11 @@ import {
   streamChatCompletion,
   type ChatRequestMessage,
 } from "@/lib/chat-actions";
+import { ActionError } from "@/lib/action-http";
+import * as personaActions from "@/lib/persona-actions";
+import * as worldActions from "@/lib/world-actions";
+import * as knowledgeActions from "@/lib/knowledge-actions";
+import { getFavoritePersonaIds, setFavoritePersonaIds } from "@/lib/preferences-actions";
 import type { World, WorldInput, WorldSnapshot } from "@/lib/worlds";
 import type {
   AppView,
@@ -199,7 +204,8 @@ export default function HomePage() {
     return (
       (error instanceof AccountActionError && error.code === "unauthenticated") ||
       (error instanceof ConversationActionError && error.code === "unauthenticated") ||
-      (error instanceof ChatActionError && error.code === "unauthenticated")
+      (error instanceof ChatActionError && error.code === "unauthenticated") ||
+      (error instanceof ActionError && error.code === "unauthenticated")
     );
   }
 
@@ -242,48 +248,26 @@ export default function HomePage() {
 
   async function loadPersonas() {
     try {
-      const response = await fetch("/api/personas", { cache: "no-store" });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      if (response.ok) {
-        const body = await response.json();
-        setPersonas(Array.isArray(body.personas) ? body.personas : []);
-      }
-    } catch {}
+      setPersonas(await personaActions.listPersonas());
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function loadUserKnowledge() {
     try {
-      const response = await fetch("/api/me/knowledge", { cache: "no-store" });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      if (response.ok) {
-        const body = await response.json();
-        setUserKnowledge({
-          knowledgeBase: body.knowledgeBase ?? null,
-          documents: Array.isArray(body.documents) ? body.documents : [],
-          chunkCount: typeof body.chunkCount === "number" ? body.chunkCount : 0,
-        });
-      }
-    } catch {}
+      setUserKnowledge(await knowledgeActions.getUserKnowledge());
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function loadFavorites() {
     try {
-      const response = await fetch("/api/preferences", { cache: "no-store" });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      if (response.ok) {
-        const body = await response.json();
-        setFavoriteIds(Array.isArray(body.preferences?.favoritePersonaIds) ? body.preferences.favoritePersonaIds : []);
-      }
-    } catch {}
+      setFavoriteIds(await getFavoritePersonaIds());
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function loadLedger() {
@@ -421,52 +405,41 @@ export default function HomePage() {
 
   async function loadWorlds() {
     try {
-      const response = await fetch("/api/worlds", { cache: "no-store" });
-      if (response.status === 401) {
-        handleSessionExpired();
-        return;
-      }
-      if (!response.ok) return;
-      const body = await response.json();
-      if (Array.isArray(body.worlds)) setWorlds(body.worlds);
-    } catch {}
+      setWorlds(await worldActions.listWorlds());
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function saveWorld(input: WorldInput) {
-    const response = await fetch("/api/worlds", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    if (response.status === 401) {
-      handleSessionExpired();
-      return;
+    try {
+      await worldActions.createWorld(input);
+      await loadWorlds();
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) throw new Error(message);
     }
-    const body = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.error || "创建世界观失败。");
-    await loadWorlds();
   }
 
   async function updateWorld(worldId: string, input: WorldInput) {
-    const response = await fetch(`/api/worlds/${worldId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    if (response.status === 401) {
-      handleSessionExpired();
-      return;
+    try {
+      await worldActions.updateWorld(worldId, input);
+      await loadWorlds();
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) throw new Error(message);
     }
-    const body = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(body?.error || "更新世界观失败。");
-    await loadWorlds();
   }
 
   async function removeWorld(worldId: string) {
     if (!window.confirm("删除这个世界观？已开演的故事不受影响。")) return;
-    const response = await fetch(`/api/worlds/${worldId}`, { method: "DELETE" });
-    if (!response.ok) throw new Error("删除世界观失败。");
-    await loadWorlds();
+    try {
+      await worldActions.deleteWorld(worldId);
+      await loadWorlds();
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) throw new Error(message);
+    }
   }
 
   async function loadMediaSettings() {
@@ -636,12 +609,9 @@ export default function HomePage() {
       : [...favoriteIds, personaId];
     setFavoriteIds(next);
     try {
-      await fetch("/api/preferences", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ favoritePersonaIds: next }),
-      });
-    } catch {
+      await setFavoritePersonaIds(next);
+    } catch (error) {
+      handleConversationError(error);
       setFavoriteIds((current) =>
         current.includes(personaId) ? current.filter((id) => id !== personaId) : [...current, personaId],
       );
@@ -688,18 +658,11 @@ export default function HomePage() {
   async function addUserKnowledgeText(name: string, text: string) {
     setUserKnowledgeBusy(true);
     try {
-      const response = await fetch("/api/me/knowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, text, source: "paste" }),
-      });
-      if (response.status === 401) {
-        handleSessionExpired();
-        throw new Error("登录会话已失效，请重新登录。");
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "保存资料失败。");
+      await knowledgeActions.addUserKnowledgeText(name, text);
       await loadUserKnowledge();
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) throw new Error(message);
     } finally {
       setUserKnowledgeBusy(false);
     }
@@ -708,28 +671,24 @@ export default function HomePage() {
   async function addUserKnowledgeFile(file: File) {
     setUserKnowledgeBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch("/api/me/knowledge", { method: "POST", body: form });
-      if (response.status === 401) {
-        handleSessionExpired();
-        throw new Error("登录会话已失效，请重新登录。");
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "上传资料失败。");
+      await knowledgeActions.addUserKnowledgeFile(file);
       await loadUserKnowledge();
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) throw new Error(message);
     } finally {
       setUserKnowledgeBusy(false);
     }
   }
 
   async function deleteUserKnowledgeDocument(documentId: string) {
-    const response = await fetch(`/api/me/knowledge/documents/${documentId}`, { method: "DELETE" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      throw new Error(body?.error || "删除资料失败。");
+    try {
+      await knowledgeActions.deleteUserKnowledgeDocument(documentId);
+      await loadUserKnowledge();
+    } catch (error) {
+      const message = handleConversationError(error);
+      if (message) throw new Error(message);
     }
-    await loadUserKnowledge();
   }
 
   async function triggerMemory(conversationId: string) {
@@ -795,14 +754,7 @@ export default function HomePage() {
   ) {
     let target = persona;
     if (saveToLibrary) {
-      const response = await fetch("/api/personas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ persona }),
-      });
-      const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "保存角色失败。");
-      target = body.persona;
+      target = await personaActions.createPersona(persona);
       await loadPersonas();
     }
     const conversation = await createConversation({ mode: "roleplay", persona: target });
@@ -1024,33 +976,20 @@ export default function HomePage() {
 
   async function loadPersonaKnowledge(personaId: string) {
     try {
-      const response = await fetch(`/api/personas/${personaId}/knowledge`, { cache: "no-store" });
-      if (response.ok) {
-        const body = await response.json();
-        setPersonaKnowledge({
-          knowledgeBase: body.knowledgeBase ?? null,
-          documents: Array.isArray(body.documents) ? body.documents : [],
-          chunkCount: typeof body.chunkCount === "number" ? body.chunkCount : 0,
-        });
-      }
-    } catch {}
+      setPersonaKnowledge(await knowledgeActions.getPersonaKnowledge(personaId));
+    } catch (error) {
+      handleConversationError(error);
+    }
   }
 
   async function addKnowledgeText(personaId: string, name: string, text: string) {
     setKnowledgeBusy(true);
     try {
-      const response = await fetch(`/api/personas/${personaId}/knowledge`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, text, source: "paste" }),
-      });
-      if (response.status === 401) {
-        handleSessionExpired();
-        throw new Error("登录会话已失效，请重新登录。");
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "保存资料失败。");
+      await knowledgeActions.addPersonaKnowledgeText(personaId, name, text);
       await loadPersonaKnowledge(personaId);
+    } catch (error) {
+      const message = handleConversationError(error);
+      throw new Error(message ?? "登录会话已失效，请重新登录。");
     } finally {
       setKnowledgeBusy(false);
     }
@@ -1059,19 +998,11 @@ export default function HomePage() {
   async function addKnowledgeFile(personaId: string, file: File) {
     setKnowledgeBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch(`/api/personas/${personaId}/knowledge`, {
-        method: "POST",
-        body: form,
-      });
-      if (response.status === 401) {
-        handleSessionExpired();
-        throw new Error("登录会话已失效，请重新登录。");
-      }
-      const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || "上传资料失败。");
+      await knowledgeActions.addPersonaKnowledgeFile(personaId, file);
       await loadPersonaKnowledge(personaId);
+    } catch (error) {
+      const message = handleConversationError(error);
+      throw new Error(message ?? "登录会话已失效，请重新登录。");
     } finally {
       setKnowledgeBusy(false);
     }
@@ -1079,77 +1010,72 @@ export default function HomePage() {
 
   async function deleteKnowledgeDocument(documentId: string) {
     const personaId = detail.open && detail.persona ? detail.persona.id : "";
-    const response = await fetch(`/api/personas/${personaId}/knowledge/documents/${documentId}`, {
-      method: "DELETE",
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      throw new Error(body?.error || "删除资料失败。");
+    try {
+      await knowledgeActions.deletePersonaKnowledgeDocument(personaId, documentId);
+      if (personaId) await loadPersonaKnowledge(personaId);
+    } catch (error) {
+      const message = handleConversationError(error);
+      throw new Error(message ?? "删除资料失败。");
     }
-    if (personaId) await loadPersonaKnowledge(personaId);
   }
 
   async function savePersonaEdit(id: string, input: PersonaInput) {
-    const response = await fetch(`/api/personas/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ persona: input }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "保存角色失败。");
-    setPersonas((current) => current.map((persona) => (persona.id === id ? body.persona : persona)));
-    setDetail({ open: true, persona: body.persona, mode: "view" });
+    try {
+      const updated = await personaActions.updatePersona(id, input);
+      setPersonas((current) => current.map((persona) => (persona.id === id ? updated : persona)));
+      setDetail({ open: true, persona: updated, mode: "view" });
+    } catch (error) {
+      const message = handleConversationError(error);
+      throw new Error(message ?? "保存角色失败。");
+    }
   }
 
   async function createLibraryPersona(input: PersonaInput): Promise<Persona> {
-    const response = await fetch("/api/personas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ persona: input }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "创建角色失败。");
-    setPersonas((current) => [...current, body.persona]);
-    void loadPersonaKnowledge(body.persona.id);
-    return body.persona;
+    try {
+      const persona = await personaActions.createPersona(input);
+      setPersonas((current) => [...current, persona]);
+      void loadPersonaKnowledge(persona.id);
+      return persona;
+    } catch (error) {
+      const message = handleConversationError(error);
+      throw new Error(message ?? "创建角色失败。");
+    }
   }
 
   async function duplicatePersona(persona: Persona) {
-    const response = await fetch("/api/personas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        persona: {
-          name: `${persona.name}（副本）`.slice(0, 32),
-          avatar: persona.avatar,
-          cover: persona.cover,
-          description: persona.description,
-          firstMessage: persona.firstMessage,
-          style: persona.style,
-          world: persona.world,
-          scenario: persona.scenario,
-          plot: persona.plot,
-          examples: persona.examples,
-          tags: persona.tags,
-        },
-      }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.persona?.id) throw new Error(body?.error || "复制角色失败。");
-    setPersonas((current) => [...current, body.persona]);
-    setDetail({ open: true, persona: body.persona, mode: "view" });
-    void loadPersonaKnowledge(body.persona.id);
+    try {
+      const created = await personaActions.createPersona({
+        name: `${persona.name}（副本）`.slice(0, 32),
+        avatar: persona.avatar,
+        cover: persona.cover,
+        description: persona.description,
+        firstMessage: persona.firstMessage,
+        style: persona.style,
+        world: persona.world,
+        scenario: persona.scenario,
+        plot: persona.plot,
+        examples: persona.examples,
+        tags: persona.tags,
+      });
+      setPersonas((current) => [...current, created]);
+      setDetail({ open: true, persona: created, mode: "view" });
+      void loadPersonaKnowledge(created.id);
+    } catch (error) {
+      const message = handleConversationError(error);
+      throw new Error(message ?? "复制角色失败。");
+    }
   }
 
   async function deleteLibraryPersona(id: string) {
     if (!window.confirm("删除这个角色？已经开始的会话不受影响。")) return;
-    const response = await fetch(`/api/personas/${id}`, { method: "DELETE" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      throw new Error(body?.error || "删除角色失败。");
+    try {
+      await personaActions.deletePersona(id);
+      await knowledgeActions.deletePersonaKnowledge(id);
+    } catch (error) {
+      const message = handleConversationError(error);
+      throw new Error(message ?? "删除角色失败。");
     }
     setPersonas((current) => current.filter((persona) => persona.id !== id));
-    await fetch(`/api/personas/${id}/knowledge`, { method: "DELETE" });
     setPersonaKnowledge(null);
     setDetail({ open: false });
   }
