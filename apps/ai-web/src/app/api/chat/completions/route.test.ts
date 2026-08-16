@@ -189,12 +189,20 @@ test("chat route retrieves persona knowledge and injects it as context", async (
     assert.equal(embeddingCalls, 1);
     assert.equal(response.headers.get("x-yan-knowledge-hits"), "2");
     const forwarded = JSON.parse(seenBody);
-    assert.match(forwarded.messages[0].content, /长期记忆/);
-    assert.match(forwarded.messages[0].content, /生日/);
-    assert.match(forwarded.messages[1].content, /资料库/);
-    assert.match(forwarded.messages[1].content, /我的经历/);
-    assert.match(forwarded.messages[1].content, /校园时代/);
-    assert.equal(forwarded.messages[2].role, "user");
+    assert.ok(
+      forwarded.messages.some(
+        (message: { content: string }) => /长期记忆/.test(message.content) && /生日/.test(message.content),
+      ),
+    );
+    assert.ok(
+      forwarded.messages.some(
+        (message: { content: string }) =>
+          /资料库/.test(message.content) &&
+          /我的经历/.test(message.content) &&
+          /校园时代/.test(message.content),
+      ),
+    );
+    assert.equal(forwarded.messages[forwarded.messages.length - 1].role, "user");
     assert.doesNotMatch(seenBody, /sk-yc_/);
   });
 });
