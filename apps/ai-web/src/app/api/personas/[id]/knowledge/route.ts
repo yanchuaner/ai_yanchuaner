@@ -3,14 +3,14 @@ import { getAiWebConfig } from "@/lib/config";
 import { createSessionEmbedder, resolveEmbeddingModel } from "@/lib/knowledge-embedding";
 import { createFileKnowledgeRepository } from "@/lib/knowledge-file-repository";
 import { parseKnowledgeRequest } from "@/lib/knowledge-request";
-import { listPersonas } from "@/lib/persona-library";
+import { createFilePersonaRepository } from "@/lib/persona-file-repository";
 import { PRESET_PERSONAS } from "@/lib/personas";
 import { requireAiSession } from "@/lib/session-guard";
 
 export const runtime = "nodejs";
 
 async function resolvePersonaName(userId: number, personaId: string): Promise<string> {
-  const library = await listPersonas(userId);
+  const library = await createFilePersonaRepository().list(userId);
   const persona = library.find((item) => item.id === personaId) ?? PRESET_PERSONAS.find((item) => item.id === personaId);
   return persona?.name ?? "角色";
 }

@@ -38,6 +38,9 @@ export function createMemoryByokSettingsRepository(): ByokSettingsRepository {
     async clearMedia(userId) {
       storeFor(userId).media = null;
     },
+    async getDecryptedMedia() {
+      return null;
+    },
     async getVoice(userId) {
       return storeFor(userId).voice;
     },
@@ -58,6 +61,9 @@ export function createMemoryByokSettingsRepository(): ByokSettingsRepository {
       else voice.tts = null;
       store.voice = voice;
       return voice;
+    },
+    async getDecryptedVoice() {
+      return null;
     },
   };
 }

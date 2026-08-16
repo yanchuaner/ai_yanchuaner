@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAiWebConfig } from "@/lib/config";
 import { requireAiSession } from "@/lib/session-guard";
 import { forwardTextToSpeech } from "@/lib/voice";
-import { getDecryptedVoiceProvider } from "@/lib/voice-settings";
+import { createFileByokSettingsRepository } from "@/lib/byok-settings-file-repository";
 
 export const runtime = "nodejs";
 
@@ -10,10 +10,12 @@ export async function POST(request: NextRequest) {
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
   const config = getAiWebConfig();
-  const provider = await getDecryptedVoiceProvider(
+  const provider = await createFileByokSettingsRepository(
+    config.sessionSecret,
+    config.allowInsecureInternalHttp,
+  ).getDecryptedVoice(
     guard.session.subject.userId,
     "tts",
-    config.sessionSecret,
   );
   if (!provider) {
     return NextResponse.json({ error: "请先在“语音设置”中配置语音朗读。" }, { status: 400 });

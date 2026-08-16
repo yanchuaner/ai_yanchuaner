@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ChatV1Error } from "./chat-v1";
 import { runGroupScheduleV1, runGroupSpeakerV1 } from "./group-v1";
+import { createCapabilityAdapter } from "@/capabilities/adapters";
 
 const base = new URL("https://api.example.test");
+const adapter = createCapabilityAdapter({ model: "deepseek-chat" });
 const first = { id: "persona_1", name: "闵先生", description: "班主任", firstMessage: "你好" };
 const second = { id: "persona_2", name: "马蛋", description: "学霸", firstMessage: "嗯" };
 
@@ -20,7 +22,8 @@ test("runGroupScheduleV1 parses speakers from the scheduler response", async () 
     history: [],
     latestUserContent: "你好",
     opening: false,
-    model: "deepseek-chat",
+    capabilityId: "text.chat.general",
+    adapter,
     accessKey: `sk-yc_${"a".repeat(64)}`,
     apiBaseUrl: base,
     traceId: "tr_123456",
@@ -42,7 +45,8 @@ test("runGroupScheduleV1 maps scheduler failure to GATEWAY_ERROR", async () => {
       history: [],
       latestUserContent: "你好",
       opening: false,
-      model: "deepseek-chat",
+      capabilityId: "text.chat.general",
+      adapter,
       accessKey: `sk-yc_${"a".repeat(64)}`,
       apiBaseUrl: base,
       traceId: "tr_123456",
@@ -69,8 +73,8 @@ test("runGroupSpeakerV1 streams a speaker reply with lifecycle events", async ()
     history: [],
     latestUserContent: "你好",
     opening: false,
-    model: "deepseek-chat",
-    embeddingModel: null,
+    capabilityId: "text.chat.general",
+    adapter,
     accessKey: `sk-yc_${"a".repeat(64)}`,
     apiBaseUrl: base,
     traceId: "tr_123456",
@@ -95,8 +99,8 @@ test("runGroupSpeakerV1 maps upstream 401 to SESSION_REVOKED", async () => {
       history: [],
       latestUserContent: "你好",
       opening: false,
-      model: "deepseek-chat",
-      embeddingModel: null,
+      capabilityId: "text.chat.general",
+      adapter,
       accessKey: `sk-yc_${"a".repeat(64)}`,
       apiBaseUrl: base,
       traceId: "tr_123456",

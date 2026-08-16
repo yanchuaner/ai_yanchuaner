@@ -12,15 +12,19 @@ import { createMemoryByokSettingsRepository } from "@/lib/byok-settings-memory-r
 import { sanitizeForLog } from "@/observability/sanitize";
 import { EnvelopeValidationError, parseMessageEnvelope } from "@/domain/message-envelope";
 import { CAPABILITY_MANIFESTS, createCapabilityRegistry } from "@/capabilities/registry";
+import { createCapabilityAdapter } from "@/capabilities/adapters";
 
 const base = new URL("https://api.example.test");
 const key = `sk-yc_${"a".repeat(64)}`;
 const persona = { id: "persona_1", name: "闵先生", description: "班主任", firstMessage: "你好" };
+const adapter = createCapabilityAdapter({ model: "deepseek-chat" });
+const degradedAdapter = createCapabilityAdapter({ model: "deepseek-chat", embeddingModel: "BAAI/bge-m3" });
 
 test("acceptance: plain chat streams and preserves upstream status", async () => {
   const response = await runChatV1({
     runId: "run_123456",
-    model: "deepseek-chat",
+    capabilityId: "text.chat.general",
+    adapter,
     messages: [{ role: "user", content: "你好" }],
     accessKey: key,
     apiBaseUrl: base,
@@ -36,7 +40,8 @@ test("acceptance: plain chat streams and preserves upstream status", async () =>
   await assert.rejects(
     runChatV1({
       runId: "run_123456",
-      model: "deepseek-chat",
+      capabilityId: "text.chat.general",
+      adapter,
       messages: [{ role: "user", content: "你好" }],
       accessKey: key,
       apiBaseUrl: base,
@@ -58,8 +63,8 @@ test("acceptance: roleplay emits degraded on knowledge failure", async () => {
     persona,
     history: [],
     query: "往事",
-    model: "deepseek-chat",
-    embeddingModel: "BAAI/bge-m3",
+    capabilityId: "text.chat.general",
+    adapter: degradedAdapter,
     accessKey: key,
     apiBaseUrl: base,
     traceId: "tr_123456",
@@ -82,7 +87,8 @@ test("acceptance: group schedule and speaker run as workflows", async () => {
     history: [],
     latestUserContent: "大家好",
     opening: false,
-    model: "deepseek-chat",
+    capabilityId: "text.chat.general",
+    adapter,
     accessKey: key,
     apiBaseUrl: base,
     traceId: "tr_123456",
@@ -100,8 +106,8 @@ test("acceptance: group schedule and speaker run as workflows", async () => {
     history: [],
     latestUserContent: "大家好",
     opening: false,
-    model: "deepseek-chat",
-    embeddingModel: null,
+    capabilityId: "text.chat.general",
+    adapter,
     accessKey: key,
     apiBaseUrl: base,
     traceId: "tr_123456",
@@ -138,7 +144,8 @@ test("acceptance: cancel and session revocation are stable terminal states", asy
   await assert.rejects(
     runChatV1({
       runId: "run_123456",
-      model: "deepseek-chat",
+      capabilityId: "text.chat.general",
+      adapter,
       messages: [{ role: "user", content: "你好" }],
       accessKey: key,
       apiBaseUrl: base,

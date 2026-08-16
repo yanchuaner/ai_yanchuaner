@@ -13,7 +13,7 @@ import {
   formatGroupHistory,
   parseSpeakerNames,
   pickFallbackSpeakers,
-} from "@/lib/chat-handler";
+} from "@/workflows/group-prompts";
 import { createFileKnowledgeRepository } from "@/lib/knowledge-file-repository";
 import { createFileMemoryRepository } from "@/lib/memory-file-repository";
 import { runWorkflow } from "@/domain/workflow-runtime";
@@ -21,6 +21,7 @@ import type { WorkflowEvent } from "@/domain/workflow-events";
 import { ChatV1Error } from "@/workflows/chat-v1";
 import type { ConversationDetail, StoredMessage } from "@/lib/conversations";
 import type { Persona } from "@/lib/personas";
+import type { CapabilityAdapter } from "@/capabilities/adapters";
 
 export type GroupScheduleV1Input = {
   runId: string;
@@ -32,7 +33,8 @@ export type GroupScheduleV1Input = {
   history: StoredMessage[];
   latestUserContent: string;
   opening: boolean;
-  model: string;
+  capabilityId: string;
+  adapter: CapabilityAdapter;
   accessKey: string;
   apiBaseUrl: URL;
   signal?: AbortSignal;
@@ -44,6 +46,7 @@ export type GroupScheduleV1Input = {
 
 export async function runGroupScheduleV1(input: GroupScheduleV1Input): Promise<{ speakers: { id: string; name: string }[] }> {
   let speakers: { id: string; name: string }[] = [];
+  const model = input.adapter.resolveModel(input.capabilityId);
   await runWorkflow({
     workflowId: "group/v1",
     version: "1.0.0",
@@ -59,7 +62,7 @@ export async function runGroupScheduleV1(input: GroupScheduleV1Input): Promise<{
         run: async (context) => {
           context.emit("capability", "started", { capabilityId: "group.scheduler" });
           const history = input.opening ? input.history : ensureLatestUser(input.history, {
-            model: input.model,
+            model,
             messages: [{ role: "user", content: input.latestUserContent }],
           } as AiChatRequest);
           const schedulerMessages: AiChatMessage[] = [
@@ -78,7 +81,7 @@ export async function runGroupScheduleV1(input: GroupScheduleV1Input): Promise<{
           const schedulerResponse = await forwardChatCompletionJson(
             input.apiBaseUrl,
             input.accessKey,
-            { model: input.model, messages: schedulerMessages },
+            { model, messages: schedulerMessages },
             input.fetcher,
             context.signal,
             { clientRequestId: input.clientRequestId, traceId: input.traceId },
@@ -120,8 +123,8 @@ export type GroupSpeakerV1Input = {
   history: StoredMessage[];
   latestUserContent: string;
   opening: boolean;
-  model: string;
-  embeddingModel?: string | null;
+  capabilityId: string;
+  adapter: CapabilityAdapter;
   accessKey: string;
   apiBaseUrl: URL;
   signal?: AbortSignal;
@@ -135,6 +138,8 @@ export async function runGroupSpeakerV1(input: GroupSpeakerV1Input): Promise<Res
   let messages: AiChatMessage[] = [];
   let output: Response | undefined;
   let knowledgeHitCount = 0;
+  const model = input.adapter.resolveModel(input.capabilityId);
+  const embeddingModel = input.adapter.resolveEmbeddingModel?.() ?? null;
   await runWorkflow({
     workflowId: "group/v1",
     version: "1.0.0",
@@ -149,7 +154,7 @@ export async function runGroupSpeakerV1(input: GroupSpeakerV1Input): Promise<Res
         id: "group.context.build",
         run: async (context) => {
           const history = input.opening ? input.history : ensureLatestUser(input.history, {
-            model: input.model,
+            model,
             messages: [{ role: "user", content: input.latestUserContent }],
           } as AiChatRequest);
           const query = [...history].reverse().find((message) => message.role === "user")?.content ?? "";
@@ -171,12 +176,12 @@ export async function runGroupSpeakerV1(input: GroupSpeakerV1Input): Promise<Res
               message: error instanceof Error ? error.message : "长期记忆不可用。",
             });
           }
-          if (query && input.embeddingModel) {
+          if (query && embeddingModel) {
             try {
               const embedded = await requestEmbeddings(
                 input.apiBaseUrl,
                 input.accessKey,
-                input.embeddingModel,
+                embeddingModel,
                 [query],
                 input.fetcher,
               );
@@ -214,7 +219,7 @@ export async function runGroupSpeakerV1(input: GroupSpeakerV1Input): Promise<Res
           const upstream = await forwardChatCompletion(
             input.apiBaseUrl,
             input.accessKey,
-            { model: input.model, messages },
+            { model, messages },
             input.fetcher,
             context.signal,
             { clientRequestId: input.clientRequestId, traceId: input.traceId },

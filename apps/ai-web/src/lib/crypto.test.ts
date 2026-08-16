@@ -7,7 +7,11 @@ test("encrypted secrets round-trip and reject tampering", () => {
   const payload = encryptSecret("sk-user-abc123", secret);
   assert.equal(decryptSecret(payload, secret), "sk-user-abc123");
   assert.equal(decryptSecret(payload, "x".repeat(32)), null);
-  assert.equal(decryptSecret(`${payload.slice(0, -2)}xx`, secret), null);
+  const parts = payload.split(".");
+  const tag = Buffer.from(parts[3], "base64url");
+  tag[0] ^= 0xff;
+  parts[3] = tag.toString("base64url");
+  assert.equal(decryptSecret(parts.join("."), secret), null);
   assert.equal(decryptSecret("bad", secret), null);
 });
 

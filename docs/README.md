@@ -13,7 +13,25 @@
 
 ## 生态契约快照
 
-`contracts/manifest.json` 固定 AI 当前消费的六类生态 Schema 及其共享定义，来源为治理仓的不可变提交。使用 `pnpm contracts:verify` 可离线校验提交摘要、路径边界和 JSON Schema；只有在 manifest 已记录不可变提交与 SHA-256 时才可运行 `pnpm contracts:sync` 从该提交同步。当前仅固定 Schema 快照，运行时代码尚未接入这些 Schema。
+`contracts/manifest.json` 固定 AI 当前消费的七类生态 Schema 及其共享定义，来源为治理仓的不可变提交。使用 `pnpm contracts:verify` 可离线校验提交摘要、路径边界和 JSON Schema；只有在 manifest 已记录不可变提交与 SHA-256 时才可运行 `pnpm contracts:sync` 从该提交同步。工作流事件与消息信封已部分接入运行时，完整 Schema 校验仍以 Web adapter 与事件边界为准。
+
+## CI 门禁
+
+`.github/workflows/ci.yml` 在 pull request 与 main 推送时自动执行：`pnpm install --frozen-lockfile`、typecheck、test、build、`contracts:verify` 与 `release:check`。任何一步失败都会让检查状态变为失败；main 分支的强制保护应在 GitHub 仓库设置中把该 workflow 配置为 required check。
+
+## 故障注入验收脚本
+
+`scripts/acceptance/run-fault-injection.mjs` 固化 AI-61 的受控故障注入：
+
+```bash
+node scripts/acceptance/run-fault-injection.mjs --scenario quota-failure
+node scripts/acceptance/run-fault-injection.mjs --scenario rate-limit
+node scripts/acceptance/run-fault-injection.mjs --scenario upstream-failure
+node scripts/acceptance/run-fault-injection.mjs --scenario credential-revoke
+node scripts/acceptance/run-fault-injection.mjs --scenario stream-abort
+```
+
+每个场景都会创建可撤销测试资源、执行请求、校验 HTTP 状态/错误码/账本，并在结束后自动清理；输出 machine-readable JSON report。
 
 生态级身份、网关、工作流、计费和观测语义由工作区根 `docs/architecture.md`、`docs/contracts.md`、`docs/extensions.md`、`docs/billing-and-ledger.md` 与 `docs/observability.md` 定义。本目录只补充 AI 仓库实现。生态治理仓尚未公开前不维护越出本仓根目录的 Markdown 链接；发布后改为固定版本链接。
 

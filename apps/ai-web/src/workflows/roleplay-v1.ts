@@ -20,6 +20,7 @@ import {
   type ContextContribution,
 } from "@/workflows/context";
 import type { Persona } from "@/lib/personas";
+import type { CapabilityAdapter } from "@/capabilities/adapters";
 
 export type RoleplayV1Input = {
   runId: string;
@@ -29,8 +30,8 @@ export type RoleplayV1Input = {
   world?: { snapshot: { title: string; description: string; timeline: string; outline: string } };
   history: AiChatMessage[];
   query: string;
-  model: string;
-  embeddingModel?: string | null;
+  capabilityId: string;
+  adapter: CapabilityAdapter;
   accessKey: string;
   apiBaseUrl: URL;
   signal?: AbortSignal;
@@ -44,6 +45,7 @@ export async function runRoleplayV1(input: RoleplayV1Input): Promise<Response> {
   let assembled: ContextAssembleResult | undefined;
   let knowledgeHitCount = 0;
   let output: Response | undefined;
+  const embeddingModel = input.adapter.resolveEmbeddingModel?.() ?? null;
   await runWorkflow({
     workflowId: "roleplay/v1",
     version: "1.0.0",
@@ -77,12 +79,12 @@ export async function runRoleplayV1(input: RoleplayV1Input): Promise<Response> {
             });
           }
 
-          if (input.query && input.embeddingModel) {
+          if (input.query && embeddingModel) {
             try {
               const embedded = await requestEmbeddings(
                 input.apiBaseUrl,
                 input.accessKey,
-                input.embeddingModel,
+                embeddingModel,
                 [input.query],
                 input.fetcher,
               );
@@ -115,6 +117,7 @@ export async function runRoleplayV1(input: RoleplayV1Input): Promise<Response> {
         id: "chat.text.stream",
         run: async (context) => {
           context.emit("capability", "started", { capabilityId: "text.chat.general" });
+          const model = input.adapter.resolveModel(input.capabilityId);
           const messages: AiChatMessage[] = [
             ...(assembled?.blocks ?? []).map((content) => ({ role: "system" as const, content })),
             { role: "user", content: input.query },
@@ -122,7 +125,7 @@ export async function runRoleplayV1(input: RoleplayV1Input): Promise<Response> {
           const upstream = await forwardChatCompletion(
             input.apiBaseUrl,
             input.accessKey,
-            { model: input.model, messages },
+            { model, messages },
             input.fetcher,
             context.signal,
             { clientRequestId: input.clientRequestId, traceId: input.traceId },

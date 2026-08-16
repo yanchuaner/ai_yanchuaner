@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runRoleplayV1 } from "./roleplay-v1";
+import { createCapabilityAdapter } from "@/capabilities/adapters";
 
 const base = new URL("https://api.example.test");
+const adapter = createCapabilityAdapter({ model: "deepseek-chat" });
+const degradedAdapter = createCapabilityAdapter({ model: "deepseek-chat", embeddingModel: "BAAI/bge-m3" });
 const persona = {
   id: "persona_1",
   name: "闵先生",
@@ -25,8 +28,8 @@ test("runRoleplayV1 streams with persona context and emits lifecycle events", as
     persona,
     history: [{ role: "user", content: "老师好" }],
     query: "老师好",
-    model: "deepseek-chat",
-    embeddingModel: null,
+    capabilityId: "text.chat.general",
+    adapter,
     accessKey: `sk-yc_${"a".repeat(64)}`,
     apiBaseUrl: base,
     traceId: "tr_123456",
@@ -59,8 +62,8 @@ test("runRoleplayV1 emits degraded when knowledge embedding fails", async () => 
     persona,
     history: [],
     query: "往事",
-    model: "deepseek-chat",
-    embeddingModel: "BAAI/bge-m3",
+    capabilityId: "text.chat.general",
+    adapter: degradedAdapter,
     accessKey: `sk-yc_${"a".repeat(64)}`,
     apiBaseUrl: base,
     traceId: "tr_123456",
