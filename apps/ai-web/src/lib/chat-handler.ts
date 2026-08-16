@@ -22,6 +22,7 @@ import { getPersonaMemory } from "@/lib/memory-library";
 import type { Persona } from "@/lib/personas";
 import { resolveRequestIds, type RequestIdBundle } from "@/lib/request-ids";
 import { cookieOptions, isValidAiSession, SESSION_COOKIE, type AiSession, unseal } from "@/lib/session";
+import { ChatV1Error, runChatV1 } from "@/workflows/chat-v1";
 
 export type ChatHandlerConfig = {
   publicUrl: URL;
@@ -67,6 +68,35 @@ export async function handleChatCompletion(request: NextRequest, config: ChatHan
       conversationDetail = await getConversationDetail(session.subject.userId, candidate.conversationId);
     } catch {
       // 会话不存在时退回普通对话，不阻断请求。
+    }
+  }
+  if (!conversationDetail || conversationDetail.mode === "chat") {
+    try {
+      return await runChatV1({
+        runId: `run_${ids.traceId}`,
+        model: parsed.model,
+        messages: parsed.messages,
+        accessKey: session.credential.accessKey,
+        apiBaseUrl: config.yanCoreApiBaseUrl,
+        signal: request.signal,
+        traceId: ids.traceId,
+        clientRequestId: ids.clientRequestId,
+        onEvent: () => {},
+        fetcher,
+      });
+    } catch (error) {
+      if (error instanceof ChatV1Error && error.code === "SESSION_REVOKED") {
+        const revoked = NextResponse.json(
+          { error: error.message, code: "SESSION_REVOKED" },
+          { status: 401 },
+        );
+        revoked.cookies.set(SESSION_COOKIE, "", cookieOptions(config.publicUrl, 0));
+        return revoked;
+      }
+      return NextResponse.json(
+        { error: error instanceof ChatV1Error ? error.message : "模型服务暂时不可用。" },
+        { status: error instanceof ChatV1Error ? error.status : 502 },
+      );
     }
   }
   if (conversationDetail?.mode === "group" && conversationDetail.cast?.length) {
