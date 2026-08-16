@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createConversation,
-  listConversations,
-  type ChatMode,
-  type StoredConversation,
-} from "@/lib/conversations";
+import { type ChatMode, type StoredConversation } from "@/lib/conversations";
+import { createFileConversationRepository } from "@/lib/conversation-file-repository";
 import { isValidPersona, type Persona } from "@/lib/personas";
 import { requireAiSession } from "@/lib/session-guard";
 
@@ -13,7 +9,8 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const guard = requireAiSession(request);
   if (guard.response) return guard.response;
-  const conversations = await listConversations(guard.session.subject.userId);
+  const repository = createFileConversationRepository();
+  const conversations = await repository.list(guard.session.subject.userId);
   return NextResponse.json({ conversations });
 }
 
@@ -69,7 +66,8 @@ export async function POST(request: NextRequest) {
     }
   }
   try {
-    const conversation = await createConversation(guard.session.subject.userId, {
+    const repository = createFileConversationRepository();
+    const conversation = await repository.create(guard.session.subject.userId, {
       mode,
       persona,
       cast,
